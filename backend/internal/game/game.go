@@ -36,14 +36,48 @@ type Game struct {
 	WinnerID          string            `json:"winnerId"`
 	GameLog           []string          `json:"gameLog"`
 	TurnActions       []*TurnAction     `json:"turnActions"`
+	ReplayTurns       []*ReplayTurn     `json:"-"`
+	lastReplayLogIndex int              `json:"-"`
 }
 
 type TurnAction struct {
-	PlayerID string  `json:"playerId"`
-	Card     *Card   `json:"card"`
-	Target   string  `json:"target"`
-	Result   string  `json:"result"`
-	Damage   int     `json:"damage"`
+	PlayerID       string  `json:"playerId"`
+	Card           *Card   `json:"card"`
+	Target         string  `json:"target"`
+	TargetPlayerID string  `json:"targetPlayerId"`
+	Result         string  `json:"result"`
+	Damage         int     `json:"damage"`
+}
+
+type ReplayTurn struct {
+	TurnNumber int                  `json:"turnNumber"`
+	Actions    []*ReplayAction      `json:"actions"`
+	NodeStates map[string]*NodeStateSnapshot `json:"nodeStates"`
+	Log        []string             `json:"log"`
+}
+
+type ReplayAction struct {
+	PlayerID       string `json:"playerId"`
+	Username       string `json:"username"`
+	Card           *Card  `json:"card"`
+	TargetNodeID   string `json:"targetNodeId"`
+	TargetPlayerID string `json:"targetPlayerId"`
+	Result         string `json:"result"`
+	Damage         int    `json:"damage"`
+}
+
+type NodeStateSnapshot struct {
+	ID        string      `json:"id"`
+	Type      NodeType    `json:"type"`
+	X         int         `json:"x"`
+	Y         int         `json:"y"`
+	HP        int         `json:"hp"`
+	MaxHP     int         `json:"maxHp"`
+	Defense   int         `json:"defense"`
+	Bandwidth int         `json:"bandwidth"`
+	IsAlive   bool        `json:"isAlive"`
+	Status    NodeStatus  `json:"status"`
+	OwnerID   string      `json:"ownerId"`
 }
 
 func DefaultGameConfig() *GameConfig {
@@ -70,7 +104,73 @@ func NewGame(id string, config *GameConfig) *Game {
 		Phase:         PhaseSetup,
 		GameLog:       make([]string, 0),
 		TurnActions:   make([]*TurnAction, 0),
+		ReplayTurns:   make([]*ReplayTurn, 0),
 	}
+}
+
+func (g *Game) recordTurnSnapshot() {
+	nodeStates := make(map[string]*NodeStateSnapshot)
+	for _, playerID := range g.PlayerOrder {
+		player := g.Players[playerID]
+		if player == nil {
+			continue
+		}
+		for x := 0; x < 5; x++ {
+			for y := 0; y < 5; y++ {
+				node := player.Grid[x][y]
+				if node != nil {
+					snapshot := &NodeStateSnapshot{
+						ID:        node.ID,
+						Type:      node.Type,
+						X:         node.X,
+						Y:         node.Y,
+						HP:        node.HP,
+						MaxHP:     node.MaxHP,
+						Defense:   node.Defense,
+						Bandwidth: node.Bandwidth,
+						IsAlive:   node.IsAlive(),
+						Status:    node.Status,
+						OwnerID:   node.OwnerID,
+					}
+					nodeStates[node.ID] = snapshot
+				}
+			}
+		}
+	}
+
+	actions := make([]*ReplayAction, 0, len(g.TurnActions))
+	for _, action := range g.TurnActions {
+		player := g.Players[action.PlayerID]
+		username := ""
+		if player != nil {
+			username = player.Username
+		}
+		replayAction := &ReplayAction{
+			PlayerID:       action.PlayerID,
+			Username:       username,
+			Card:           action.Card,
+			TargetNodeID:   action.Target,
+			TargetPlayerID: action.TargetPlayerID,
+			Result:         action.Result,
+			Damage:         action.Damage,
+		}
+		actions = append(actions, replayAction)
+	}
+
+	currentLogLen := len(g.GameLog)
+	turnLog := make([]string, 0)
+	if g.lastReplayLogIndex < currentLogLen {
+		turnLog = g.GameLog[g.lastReplayLogIndex:currentLogLen]
+	}
+	g.lastReplayLogIndex = currentLogLen
+
+	turn := &ReplayTurn{
+		TurnNumber: g.CurrentTurn,
+		Actions:    actions,
+		NodeStates: nodeStates,
+		Log:        turnLog,
+	}
+	g.ReplayTurns = append(g.ReplayTurns, turn)
 }
 
 func (g *Game) AddPlayer(playerID, username string) bool {
@@ -114,6 +214,7 @@ func (g *Game) PlaceNode(playerID string, nodeType NodeType, x, y int) bool {
 }
 
 func (g *Game) StartFirstTurn() {
+	g.lastReplayLogIndex = len(g.GameLog)
 	g.CurrentTurn = 1
 	g.Phase = PhaseProgramming
 	
@@ -217,6 +318,8 @@ func (g *Game) ExecutePhase() {
 	
 	g.checkGameEnd()
 	
+	g.recordTurnSnapshot()
+	
 	if g.Phase != PhaseGameOver {
 		g.CurrentTurn++
 		g.StartProgrammingPhase()
@@ -237,9 +340,10 @@ func (g *Game) executeCard(played *PlayedCard) {
 	targetNode := targetPlayer.GetNodeByID(played.TargetNodeID)
 	
 	action := &TurnAction{
-		PlayerID: played.PlayerID,
-		Card:     played.Card,
-		Target:   played.TargetNodeID,
+		PlayerID:       played.PlayerID,
+		Card:           played.Card,
+		Target:         played.TargetNodeID,
+		TargetPlayerID: targetPlayer.ID,
 	}
 
 	switch played.Card.Type {

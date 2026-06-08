@@ -12,6 +12,8 @@
   $: isUnknown = node && node.unknown
   $: isAlive = node && (node.alive !== false && node.hp !== 0)
   $: nodeType = node?.type || 'unknown'
+  $: isHighlighted = node?.highlighted || false
+  $: animationType = node?.animationType || null
 
   $: colors = {
     core: { primary: '#ff00ff', secondary: '#990099', glow: 'rgba(255, 0, 255, 0.6)' },
@@ -51,6 +53,9 @@
   class:unknown={isUnknown}
   class:dead={!isAlive}
   class:targetable={targetMode && isAlive && !isUnknown}
+  class:highlighted={isHighlighted}
+  class:attack-anim={animationType === 'attack'}
+  class:shield-anim={animationType === 'shield'}
   transform="translate({x}, {y})"
   on:click={handleClick}
   style="pointer-events: all; cursor: {targetMode && isAlive && !isUnknown ? 'pointer' : 'default'}"
@@ -142,5 +147,56 @@
 
   .grid-node.dead {
     opacity: 0.3;
+  }
+
+  .grid-node.highlighted polygon {
+    animation: nodePulse 0.5s ease-in-out infinite;
+  }
+
+  .grid-node.attack-anim polygon {
+    animation: attackFlash 0.3s ease-in-out;
+  }
+
+  .grid-node.shield-anim polygon {
+    animation: shieldGlow 0.5s ease-in-out;
+  }
+
+  @keyframes nodePulse {
+    0%, 100% {
+      filter: brightness(1) drop-shadow(0 0 3px currentColor);
+    }
+    50% {
+      filter: brightness(1.5) drop-shadow(0 0 15px currentColor);
+    }
+  }
+
+  @keyframes attackFlash {
+    0% {
+      filter: brightness(1) drop-shadow(0 0 3px currentColor);
+    }
+    25% {
+      filter: brightness(2) drop-shadow(0 0 20px #ff3366);
+    }
+    50% {
+      filter: brightness(0.7) drop-shadow(0 0 10px #ff3366);
+    }
+    75% {
+      filter: brightness(1.5) drop-shadow(0 0 15px #ff3366);
+    }
+    100% {
+      filter: brightness(1) drop-shadow(0 0 3px currentColor);
+    }
+  }
+
+  @keyframes shieldGlow {
+    0% {
+      filter: brightness(1) drop-shadow(0 0 3px currentColor);
+    }
+    50% {
+      filter: brightness(1.5) drop-shadow(0 0 20px #00f0ff);
+    }
+    100% {
+      filter: brightness(1) drop-shadow(0 0 3px currentColor);
+    }
   }
 </style>

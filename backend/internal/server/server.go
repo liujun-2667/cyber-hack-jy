@@ -1,12 +1,14 @@
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 
 	ws "cyberhack/internal/websocket"
 	"cyberhack/internal/database"
+	"cyberhack/internal/replay"
 	redisClient "cyberhack/internal/redis"
 
 	"github.com/google/uuid"
@@ -59,6 +61,60 @@ func (s *Server) SetupRoutes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+	mux.HandleFunc("/api/replays", s.handleGetReplays)
+	mux.HandleFunc("/api/replay", s.handleGetReplay)
+}
+
+func (s *Server) handleGetReplays(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	roomID := r.URL.Query().Get("roomId")
+	if roomID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "roomId is required"})
+		return
+	}
+
+	replays := replay.GetStore().GetReplays(roomID)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"replays": replays,
+	})
+}
+
+func (s *Server) handleGetReplay(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	roomID := r.URL.Query().Get("roomId")
+	replayID := r.URL.Query().Get("replayId")
+
+	if roomID == "" || replayID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "roomId and replayId are required"})
+		return
+	}
+
+	replayData := replay.GetStore().GetReplay(roomID, replayID)
+	if replayData == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "replay not found"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(replayData)
 }
 
 func Start() {

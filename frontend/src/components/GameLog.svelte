@@ -2,19 +2,25 @@
   import { gameStore } from '../store/gameStore.js'
   import { onMount } from 'svelte'
 
-  let logs = []
+  export let logs = null
+
+  let internalLogs = []
 
   $: gameState = $gameStore.gameState
   $: {
-    if (gameState?.gameLog) {
-      logs = gameState.gameLog.slice(-20)
+    if (logs !== null) {
+      internalLogs = logs.slice(-20)
+    } else if (gameState?.gameLog) {
+      internalLogs = gameState.gameLog.slice(-20)
+    } else {
+      internalLogs = []
     }
   }
 
   let logContainer
 
   $: {
-    if (logContainer && logs.length > 0) {
+    if (logContainer && internalLogs.length > 0) {
       setTimeout(() => {
         logContainer.scrollTop = logContainer.scrollHeight
       }, 50)
@@ -27,12 +33,12 @@
     <span>📜 战斗日志</span>
   </div>
   <div class="log-content" bind:this={logContainer}>
-    {#each logs as log, index (index)}
+    {#each internalLogs as log, index (index)}
       <div class="log-item">
         <span class="log-text">{log}</span>
       </div>
     {/each}
-    {#if logs.length === 0}
+    {#if internalLogs.length === 0}
       <div class="empty-log">
         <span>暂无战斗记录</span>
       </div>

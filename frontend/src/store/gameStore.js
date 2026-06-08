@@ -8,7 +8,13 @@ function createGameStore() {
     error: null,
     gameLog: [],
     players: [],
-    inGame: false
+    inGame: false,
+    lastReplayId: null,
+    replayMode: false,
+    currentReplay: null,
+    replayTurn: 0,
+    replayPlaying: false,
+    replaySpeed: 1
   })
 
   let ws = null
@@ -131,6 +137,7 @@ function createGameStore() {
       case 'game_over':
         update(state => ({
           ...state,
+          lastReplayId: message.payload.replayId || null,
           gameState: state.gameState ? { 
             ...state.gameState, 
             phase: 'gameover', 
@@ -204,6 +211,69 @@ function createGameStore() {
     send('chat', { message })
   }
 
+  function getApiBaseUrl() {
+    const protocol = window.location.protocol
+    const host = window.location.hostname
+    const port = window.location.port === '5173' ? '8080' : (window.location.port || '80')
+    return `${protocol}//${host}:${port}`
+  }
+
+  async function fetchReplay(roomId, replayId) {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/replay?roomId=${roomId}&replayId=${replayId}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch replay')
+      }
+      const replayData = await response.json()
+      update(state => ({
+        ...state,
+        currentReplay: replayData,
+        replayMode: true,
+        replayTurn: 1,
+        replayPlaying: false
+      }))
+      return replayData
+    } catch (error) {
+      console.error('Error fetching replay:', error)
+      update(state => ({ ...state, error: '获取回放失败' }))
+      setTimeout(() => {
+        update(state => ({ ...state, error: null }))
+      }, 3000)
+      return null
+    }
+  }
+
+  function setReplayTurn(turn) {
+    update(state => ({
+      ...state,
+      replayTurn: turn
+    }))
+  }
+
+  function setReplayPlaying(playing) {
+    update(state => ({
+      ...state,
+      replayPlaying: playing
+    }))
+  }
+
+  function setReplaySpeed(speed) {
+    update(state => ({
+      ...state,
+      replaySpeed: speed
+    }))
+  }
+
+  function exitReplay() {
+    update(state => ({
+      ...state,
+      replayMode: false,
+      currentReplay: null,
+      replayTurn: 0,
+      replayPlaying: false
+    }))
+  }
+
   return {
     subscribe,
     connect,
@@ -217,7 +287,12 @@ function createGameStore() {
     playCard,
     endTurn,
     requestGameState,
-    sendChat
+    sendChat,
+    fetchReplay,
+    setReplayTurn,
+    setReplayPlaying,
+    setReplaySpeed,
+    exitReplay
   }
 }
 

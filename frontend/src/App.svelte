@@ -2,13 +2,16 @@
   import { onMount } from 'svelte'
   import Lobby from './components/Lobby.svelte'
   import GameBoard from './components/GameBoard.svelte'
+  import ReplayView from './components/ReplayView.svelte'
   import { gameStore } from './store/gameStore.js'
 
   let currentView = 'lobby'
   let username = ''
 
-  $: if ($gameStore.inGame) {
+  $: if ($gameStore.inGame && !$gameStore.replayMode) {
     currentView = 'game'
+  } else if ($gameStore.replayMode) {
+    currentView = 'replay'
   }
 
   function handleLogin(name) {
@@ -20,6 +23,10 @@
     currentView = 'lobby'
     gameStore.disconnect()
   }
+
+  function handleBackFromReplay() {
+    currentView = 'game'
+  }
 </script>
 
 <div class="app-container">
@@ -28,7 +35,9 @@
   {#if currentView === 'lobby'}
     <Lobby onLogin={handleLogin} />
   {:else if currentView === 'game'}
-    <GameBoard onBack={handleBackToLobby} />
+    <GameBoard onBack={handleBackToLobby} onWatchReplay={() => currentView = 'replay'} />
+  {:else if currentView === 'replay'}
+    <ReplayView onBack={handleBackFromReplay} />
   {/if}
 </div>
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"cyberhack/internal/game"
+	"cyberhack/internal/replay"
 	"github.com/google/uuid"
 )
 
@@ -294,9 +295,13 @@ func (r *Room) ExecutePhase() {
 	r.sendAllPlayerStates()
 
 	if isGameOver {
+		replayData := replay.CreateReplay(r.ID, r.Game)
+		replay.GetStore().AddReplay(r.ID, replayData)
+
 		r.Broadcast("game_over", map[string]interface{}{
 			"winnerId": winnerID,
 			"turns":    turns,
+			"replayId": replayData.ID,
 		})
 		return
 	}

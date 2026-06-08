@@ -8,6 +8,7 @@
   import GameInfo from './GameInfo.svelte'
 
   export let onBack
+  export let onWatchReplay = null
 
   let selectedCard = null
   let targetMode = false
@@ -61,6 +62,14 @@
   function handleCancelTarget() {
     selectedCard = null
     targetMode = false
+  }
+
+  async function handleWatchReplay() {
+    if (!$gameStore.lastReplayId || !$gameStore.roomId) return
+    await gameStore.fetchReplay($gameStore.roomId, $gameStore.lastReplayId)
+    if (onWatchReplay) {
+      onWatchReplay()
+    }
   }
 
   onMount(() => {
@@ -189,7 +198,14 @@
         <p class="winner-info">
           胜者: {gameState?.winnerId === $myPlayer?.id ? '你' : '对手'}
         </p>
-        <button class="btn-neon" on:click={onBack}>返回大厅</button>
+        <div class="game-over-buttons">
+          {#if $gameStore.lastReplayId}
+            <button class="btn-neon-pink" on:click={handleWatchReplay}>
+              观看回放
+            </button>
+          {/if}
+          <button class="btn-neon" on:click={onBack}>返回大厅</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -427,6 +443,19 @@
   .winner-info {
     font-size: 24px;
     color: var(--text-primary);
+  }
+
+  .game-over-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .game-over-buttons .btn-neon,
+  .game-over-buttons .btn-neon-pink {
+    width: 200px;
+    margin: 0 auto;
   }
 
   .error-toast {
