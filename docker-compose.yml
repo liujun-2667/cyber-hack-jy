@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cyberhack
+      POSTGRES_PASSWORD: cyberhack2077
+      POSTGRES_DB: cyberhack
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - cybernet
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    networks:
+      - cybernet
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=cyberhack
+      - DB_PASSWORD=cyberhack2077
+      - DB_NAME=cyberhack
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=cyberhack-secret-key-2077
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - cybernet
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - cybernet
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  cybernet:
+    driver: bridge
