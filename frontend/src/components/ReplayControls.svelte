@@ -7,6 +7,9 @@
   export let speed = 1
 
   function togglePlay() {
+    if (!isPlaying && currentTurn >= totalTurns) {
+      gameStore.setReplayTurn(1)
+    }
     gameStore.setReplayPlaying(!isPlaying)
   }
 
@@ -64,7 +67,7 @@
       <div class="progress-track">
         <div
           class="progress-fill"
-          style="width: {((currentTurn - 1) / (totalTurns - 1)) * 100}%"
+          style="width: {totalTurns <= 1 ? (currentTurn === 1 ? '100%' : '0%') : ((currentTurn - 1) / (totalTurns - 1)) * 100 + '%'}"
         ></div>
       </div>
     </div>

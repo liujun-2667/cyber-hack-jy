@@ -33,11 +33,13 @@
 
   $: {
     if (isPlaying && replay && totalTurns > 0) {
-      startAutoPlay()
+      restartAutoPlay()
     } else {
       stopAutoPlay()
     }
   }
+
+  $: speed, handleSpeedChange()
 
   $: currentTurnIndex, resetActionAnimation()
 
@@ -89,8 +91,9 @@
 
   function startAutoPlay() {
     if (playInterval) return
+    if (currentTurnIndex >= totalTurns - 1) return
 
-    const turnDelay = Math.max(1500, 3500 / speed)
+    const turnDelay = Math.max(800, 3500 / speed)
     playInterval = setInterval(() => {
       if (currentTurnIndex < totalTurns - 1) {
         gameStore.setReplayTurn($gameStore.replayTurn + 1)
@@ -98,6 +101,25 @@
         gameStore.setReplayPlaying(false)
       }
     }, turnDelay)
+  }
+
+  function restartAutoPlay() {
+    stopAutoPlay()
+    startAutoPlay()
+  }
+
+  function handleSpeedChange() {
+    if (isPlaying && playInterval) {
+      restartAutoPlay()
+    }
+    if (actionTimer && showingActions) {
+      const remainingActions = currentActions.length - actionIndex
+      if (remainingActions > 0) {
+        clearTimeout(actionTimer)
+        actionTimer = null
+        playNextAction()
+      }
+    }
   }
 
   function stopAutoPlay() {
@@ -334,6 +356,7 @@
     flex: 1;
     display: flex;
     overflow: hidden;
+    min-height: 0;
   }
 
   .left-panel,
@@ -344,6 +367,7 @@
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
   .center-area {
@@ -351,9 +375,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 20px;
-    gap: 10px;
+    justify-content: space-around;
+    padding: 15px 20px;
+    gap: 20px;
+    overflow: auto;
+    min-height: 0;
   }
 
   .opponent-area,
@@ -361,6 +387,7 @@
     width: 100%;
     display: flex;
     justify-content: center;
+    flex-shrink: 0;
   }
 
   .player-section {
