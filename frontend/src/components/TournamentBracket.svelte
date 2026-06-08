@@ -4,19 +4,31 @@
   export let matches = []
   export let currentRound = 0
 
-  $: rounds = groupByRound(matches)
-  $: totalRounds = Object.keys(rounds).length
+  $: roundsArray = buildRoundsData(matches)
 
-  function groupByRound(matches) {
+  function buildRoundsData(matches) {
     const grouped = {}
     matches.forEach(match => {
       const round = match.round || 1
       if (!grouped[round]) {
         grouped[round] = []
       }
-      grouped[round].push(match)
+      grouped[round].push(buildMatchData(match))
     })
-    return grouped
+
+    const sortedRounds = Object.keys(grouped).sort((a, b) => a - b)
+    const totalRounds = sortedRounds.length
+
+    return sortedRounds.map(roundKey => {
+      const roundNumber = parseInt(roundKey)
+      const roundMatches = grouped[roundKey]
+      return {
+        roundNumber,
+        roundName: getRoundName(roundNumber, totalRounds),
+        matchCount: roundMatches.length,
+        matches: roundMatches
+      }
+    })
   }
 
   function getRoundName(round, totalRounds) {
@@ -24,6 +36,22 @@
     if (round === totalRounds - 1) return '半决赛'
     if (round === totalRounds - 2) return '四分之一决赛'
     return `第${round}轮`
+  }
+
+  function buildMatchData(match) {
+    const status = getMatchStatus(match)
+    const p1 = getPlayerInfo(match, 'p1')
+    const p2 = getPlayerInfo(match, 'p2')
+    const isHighlighted = match.status === 'in_progress'
+    return {
+      ...match,
+      statusClass: status,
+      p1,
+      p2,
+      isHighlighted,
+      showInProgressBadge: status === 'in_progress',
+      showByeBadge: status === 'bye'
+    }
   }
 
   function getMatchStatus(match) {
@@ -51,38 +79,31 @@
       seed: seed || 0,
       isWinner,
       isLoser,
-      isBye
+      isBye,
+      hasPlayer: !!playerId
     }
-  }
-
-  function isMatchHighlighted(match) {
-    return match.status === 'in_progress'
   }
 </script>
 
 <div class="bracket-container">
   <div class="bracket-rounds">
-    {#each Object.keys(rounds).sort((a, b) => a - b) as roundKey}
-      {#const round = parseInt(roundKey)}
+    {#each roundsArray as round (round.roundNumber)}
       <div class="bracket-round">
         <div class="round-header">
-          <span class="round-name">{getRoundName(round, totalRounds)}</span>
-          <span class="round-count">{rounds[round].length}场</span>
+          <span class="round-name">{round.roundName}</span>
+          <span class="round-count">{round.matchCount}场</span>
         </div>
         <div class="round-matches">
-          {#each rounds[round] as match (match.id)}
-            {#const status = getMatchStatus(match)}
-            {#const p1 = getPlayerInfo(match, 'p1')}
-            {#const p2 = getPlayerInfo(match, 'p2')}
+          {#each round.matches as match (match.id)}
             <div 
-              class="match-card {status}" 
-              class:highlighted={isMatchHighlighted(match)}
+              class="match-card {match.statusClass}" 
+              class:highlighted={match.isHighlighted}
             >
-              <div class="match-player" class:winner={p1.isWinner} class:loser={p1.isLoser} class:bye={p1.isBye}>
-                {#if p1.id}
-                  <span class="player-seed">#{p1.seed}</span>
-                  <span class="player-rank" style="color: {getRankColor(p1.rank)}">{getRankIcon(p1.rank)}</span>
-                  <span class="player-name">{p1.username}</span>
+              <div class="match-player" class:winner={match.p1.isWinner} class:loser={match.p1.isLoser} class:bye={match.p1.isBye}>
+                {#if match.p1.hasPlayer}
+                  <span class="player-seed">#{match.p1.seed}</span>
+                  <span class="player-rank" style="color: {getRankColor(match.p1.rank)}">{getRankIcon(match.p1.rank)}</span>
+                  <span class="player-name">{match.p1.username}</span>
                 {:else}
                   <span class="player-placeholder">待定</span>
                 {/if}
@@ -92,22 +113,22 @@
                 <span class="vs-text">VS</span>
               </div>
               
-              <div class="match-player" class:winner={p2.isWinner} class:loser={p2.isLoser} class:bye={p2.isBye}>
-                {#if p2.id}
-                  <span class="player-seed">#{p2.seed}</span>
-                  <span class="player-rank" style="color: {getRankColor(p2.rank)}">{getRankIcon(p2.rank)}</span>
-                  <span class="player-name">{p2.username}</span>
+              <div class="match-player" class:winner={match.p2.isWinner} class:loser={match.p2.isLoser} class:bye={match.p2.isBye}>
+                {#if match.p2.hasPlayer}
+                  <span class="player-seed">#{match.p2.seed}</span>
+                  <span class="player-rank" style="color: {getRankColor(match.p2.rank)}">{getRankIcon(match.p2.rank)}</span>
+                  <span class="player-name">{match.p2.username}</span>
                 {:else}
                   <span class="player-placeholder">待定</span>
                 {/if}
               </div>
 
-              {#if status === 'in_progress'}
+              {#if match.showInProgressBadge}
                 <div class="match-status-badge in-progress">
                   进行中
                 </div>
               {/if}
-              {#if status === 'bye'}
+              {#if match.showByeBadge}
                 <div class="match-status-badge bye">
                   轮空
                 </div>

@@ -353,7 +353,6 @@ func (tm *TournamentManager) generateBracket(tournamentID string) {
 	players := state.Players
 	numPlayers := len(players)
 	nextPowerOf2 := int(math.Pow(2, math.Ceil(math.Log2(float64(numPlayers)))))
-	numByes := nextPowerOf2 - numPlayers
 
 	numFirstRoundMatches := nextPowerOf2 / 2
 	firstRoundPlayers := make([]*database.TournamentPlayer, nextPowerOf2)
