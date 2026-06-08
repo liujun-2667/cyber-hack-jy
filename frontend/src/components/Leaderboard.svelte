@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { gameStore } from '../store/gameStore.js'
   import { getRankInfo, formatElo } from '../utils/rank.js'
 
@@ -9,17 +9,58 @@
   let playerRank = null
   let loading = true
   let myPlayerId = null
+  let lastUpdateTime = 0
+  let secondsAgo = 0
+  let refreshInterval = null
+  let timerInterval = null
+
+  const REFRESH_INTERVAL = 15000
 
   $: playerInfo = $gameStore.playerInfo
 
+  function updateSecondsAgo() {
+    if (lastUpdateTime > 0) {
+      secondsAgo = Math.floor((Date.now() - lastUpdateTime) / 1000)
+    }
+  }
+
+  function mergeLeaderboard(newEntries) {
+    const oldMap = new Map(leaderboard.map(e => [e.playerId, { ...e }]))
+    const result = []
+    
+    for (const newEntry of newEntries) {
+      const oldEntry = oldMap.get(newEntry.playerId)
+      if (oldEntry) {
+        let changed = false
+        for (const key of Object.keys(newEntry)) {
+          if (oldEntry[key] !== newEntry[key]) {
+            changed = true
+            break
+          }
+        }
+        if (changed) {
+          result.push({ ...newEntry, _updated: true })
+        } else {
+          result.push({ ...newEntry })
+        }
+      } else {
+        result.push({ ...newEntry, _new: true })
+      }
+    }
+    
+    return result
+  }
+
   async function loadLeaderboard() {
-    loading = true
     try {
       const pid = myPlayerId || playerInfo?.playerId
       const data = await gameStore.fetchLeaderboard(20, pid)
       if (data) {
-        leaderboard = data.leaderboard || []
+        const newLeaderboard = data.leaderboard || []
+        leaderboard = mergeLeaderboard(newLeaderboard)
         playerRank = data.playerRank || null
+        lastUpdateTime = Date.now()
+        secondsAgo = 0
       }
     } catch (e) {
       console.error('Failed to load leaderboard:', e)
@@ -35,11 +76,41 @@
     return 'normal'
   }
 
+  function startAutoRefresh() {
+    if (refreshInterval) clearInterval(refreshInterval)
+    if (timerInterval) clearInterval(timerInterval)
+    
+    refreshInterval = setInterval(() => {
+      loadLeaderboard()
+    }, REFRESH_INTERVAL)
+    
+    timerInterval = setInterval(() => {
+      updateSecondsAgo()
+    }, 1000)
+  }
+
+  function stopAutoRefresh() {
+    if (refreshInterval) {
+      clearInterval(refreshInterval)
+      refreshInterval = null
+    }
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = null
+    }
+  }
+
   onMount(() => {
     if (playerInfo?.playerId) {
       myPlayerId = playerInfo.playerId
     }
-    loadLeaderboard()
+    loadLeaderboard().then(() => {
+      startAutoRefresh()
+    })
+  })
+
+  onDestroy(() => {
+    stopAutoRefresh()
   })
 
   $: if (playerInfo?.playerId && !myPlayerId) {
@@ -52,7 +123,10 @@
   <div class="leaderboard-modal">
     <div class="modal-header">
       <h2 class="neon-text-cyan">🏆 全服排行榜</h2>
-      <button class="close-btn" on:click={onClose}>✕</button>
+      <div class="header-right">
+        <span class="last-update">上次更新: {secondsAgo}秒前</span>
+        <button class="close-btn" on:click={onClose}>✕</button>
+      </div>
     </div>
 
     <div class="modal-content">
@@ -67,10 +141,12 @@
             <span class="col-winrate">胜率</span>
           </div>
 
-          {#each leaderboard as entry}
+          {#each leaderboard as entry (entry.playerId)}
             <div 
               class="leaderboard-item"
               class:is-me={entry.playerId === myPlayerId}
+              class:updated={entry._updated}
+              class:new-entry={entry._new}
             >
               <span class="col-rank">
                 <span class="rank-badge {getRankBadgeClass(entry.rank)}">
@@ -168,6 +244,18 @@
     letter-spacing: 2px;
   }
 
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .last-update {
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+  }
+
   .close-btn {
     background: transparent;
     border: none;
@@ -223,7 +311,7 @@
     padding: 10px 12px;
     background: var(--bg-tertiary);
     border-radius: 6px;
-    transition: all 0.2s;
+    transition: all 0.3s ease;
   }
 
   .leaderboard-item:hover {
@@ -233,6 +321,34 @@
   .leaderboard-item.is-me {
     background: rgba(0, 240, 255, 0.15);
     border: 1px solid var(--neon-cyan);
+  }
+
+  .leaderboard-item.updated {
+    animation: updateFlash 1s ease-out;
+  }
+
+  .leaderboard-item.new-entry {
+    animation: slideIn 0.5s ease-out;
+  }
+
+  @keyframes updateFlash {
+    0% {
+      background: rgba(255, 215, 0, 0.4);
+    }
+    100% {
+      background: var(--bg-tertiary);
+    }
+  }
+
+  @keyframes slideIn {
+    0% {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0);
+    }
   }
 
   .rank-badge {

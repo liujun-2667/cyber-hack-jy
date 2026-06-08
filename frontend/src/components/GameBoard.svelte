@@ -261,8 +261,13 @@
           <div class="elo-change-section">
             <div class="elo-row">
               <span class="elo-label">积分变动</span>
-              <span class="elo-change" class:positive={myRankResult.eloChange > 0}>
-                {myRankResult.eloChange > 0 ? '+' : ''}{myRankResult.eloChange}
+              <span class="elo-change-wrapper">
+                <span class="elo-change" class:positive={myRankResult.eloChange > 0}>
+                  {myRankResult.eloChange > 0 ? '+' : ''}{myRankResult.eloChange}
+                </span>
+                {#if myRankResult.boundaryBonus}
+                  <span class="boundary-bonus-tag">边界加成</span>
+                {/if}
               </span>
             </div>
             <div class="elo-row">
@@ -716,6 +721,35 @@
 
   .elo-change.positive {
     color: var(--neon-green);
+  }
+
+  .elo-change-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .boundary-bonus-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #FFD700;
+    background: rgba(255, 215, 0, 0.15);
+    border: 1px solid #FFD700;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    animation: bonusGlow 2s ease-in-out infinite;
+  }
+
+  @keyframes bonusGlow {
+    0%, 100% {
+      box-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+    }
+    50% {
+      box-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
+    }
   }
 
   .elo-current {

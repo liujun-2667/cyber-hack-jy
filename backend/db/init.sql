@@ -52,6 +52,17 @@ CREATE TABLE IF NOT EXISTS card_usage_stats (
     UNIQUE(player_id, card_type)
 );
 
+CREATE TABLE IF NOT EXISTS game_card_stats (
+    id SERIAL PRIMARY KEY,
+    game_id UUID REFERENCES game_records(id) ON DELETE CASCADE,
+    player_id UUID REFERENCES players(id),
+    card_type VARCHAR(50) NOT NULL,
+    usage_count INTEGER DEFAULT 0
+);
+
+CREATE INDEX idx_game_card_stats_game ON game_card_stats(game_id);
+CREATE INDEX idx_game_card_stats_player ON game_card_stats(player_id);
+
 CREATE TABLE IF NOT EXISTS seasons (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,

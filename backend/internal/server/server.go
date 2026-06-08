@@ -69,6 +69,7 @@ func (s *Server) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/player", s.handleGetPlayer)
 	mux.HandleFunc("/api/player/stats", s.handleGetPlayerStats)
 	mux.HandleFunc("/api/leaderboard", s.handleGetLeaderboard)
+	mux.HandleFunc("/api/player/recent-games", s.handleGetRecentGames)
 	mux.HandleFunc("/api/season", s.handleGetSeason)
 }
 
@@ -192,6 +193,43 @@ func (s *Server) handleGetPlayerStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(stats)
+}
+
+func (s *Server) handleGetRecentGames(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	playerID := r.URL.Query().Get("playerId")
+	if playerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "playerId is required"})
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 5
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 20 {
+			limit = l
+		}
+	}
+
+	games, err := database.GetRecentGames(playerID, limit)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to get recent games"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"games": games,
+	})
 }
 
 func (s *Server) handleGetLeaderboard(w http.ResponseWriter, r *http.Request) {

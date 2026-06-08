@@ -53,6 +53,7 @@ func (h *Hub) Run() {
 			log.Printf("Client registered: %s (%s)", client.ID, client.Username)
 
 			go h.sendPlayerInfo(client)
+			go h.broadcastOnlineCount()
 
 		case client := <-h.Unregister:
 			h.mu.Lock()
@@ -63,6 +64,8 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 			log.Printf("Client unregistered: %s", client.ID)
+
+			go h.broadcastOnlineCount()
 
 		case <-h.stopChan:
 			return
@@ -82,7 +85,18 @@ func (h *Hub) Stop() {
 func (h *Hub) tick() {
 	for range h.ticker.C {
 		h.updateMatchmakingStatus()
+		h.broadcastOnlineCount()
 	}
+}
+
+func (h *Hub) broadcastOnlineCount() {
+	h.mu.RLock()
+	count := len(h.clients)
+	h.mu.RUnlock()
+
+	h.broadcastToAll("online_count", map[string]interface{}{
+		"count": count,
+	})
 }
 
 func (h *Hub) updateMatchmakingStatus() {

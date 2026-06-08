@@ -19,7 +19,8 @@ function createGameStore() {
     matchmakingStatus: null,
     isMatching: false,
     rankResults: null,
-    seasonInfo: null
+    seasonInfo: null,
+    onlineCount: 0
   })
 
   let ws = null
@@ -217,6 +218,9 @@ function createGameStore() {
         break
       case 'chat':
         break
+      case 'online_count':
+        update(state => ({ ...state, onlineCount: message.payload.count }))
+        break
       default:
         console.log('Unhandled message type:', message.type)
     }
@@ -338,6 +342,19 @@ function createGameStore() {
     }
   }
 
+  async function fetchRecentGames(playerId, limit = 5) {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/player/recent-games?playerId=${playerId}&limit=${limit}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch recent games')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching recent games:', error)
+      return null
+    }
+  }
+
   async function fetchSeasonInfo() {
     try {
       const response = await fetch(`${getApiBaseUrl()}/api/season`)
@@ -399,6 +416,7 @@ function createGameStore() {
     fetchReplay,
     fetchLeaderboard,
     fetchPlayerStats,
+    fetchRecentGames,
     fetchSeasonInfo,
     setReplayTurn,
     setReplayPlaying,

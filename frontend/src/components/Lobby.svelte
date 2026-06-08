@@ -228,6 +228,11 @@
         <div class="loading-spinner"></div>
         <h3 class="neon-text-cyan">正在匹配对手</h3>
         
+        <div class="online-count">
+          <span class="online-dot"></span>
+          <span>当前在线: {$gameStore.onlineCount}人</span>
+        </div>
+        
         <div class="match-stats">
           <div class="match-stat-item">
             <span class="stat-label">等待时间</span>
@@ -536,6 +541,36 @@
     margin: 0;
     font-size: 20px;
     letter-spacing: 2px;
+  }
+
+  .online-count {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(0, 200, 100, 0.1);
+    border: 1px solid rgba(0, 200, 100, 0.3);
+    border-radius: 20px;
+    font-size: 13px;
+    color: var(--neon-green);
+  }
+
+  .online-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--neon-green);
+    border-radius: 50%;
+    animation: onlinePulse 2s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--neon-green);
+  }
+
+  @keyframes onlinePulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 
   .match-stats {

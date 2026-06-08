@@ -96,13 +96,32 @@ type EloChangeResult struct {
 	RankChange   string
 	WinnerPrevRank Rank
 	LoserPrevRank  Rank
+	WinnerBoundaryBonus bool
+	LoserBoundaryBonus  bool
 }
 
 const (
 	MaxEloGain = 50
 	MinEloLoss = 10
 	BaseK      = 32
+	BoundaryRange = 50
+	BoundaryWinMultiplier = 1.5
+	BoundaryLossDivisor   = 2.0
 )
+
+func IsNearRankBoundary(elo int) bool {
+	currentRank := GetRank(elo)
+	threshold := GetRankThreshold(currentRank)
+	
+	if elo-threshold.MinElo <= BoundaryRange {
+		return true
+	}
+	if threshold.MaxElo-elo <= BoundaryRange {
+		return true
+	}
+	
+	return false
+}
 
 func CalculateEloChange(winnerElo, loserElo int) EloChangeResult {
 	winnerPrevRank := GetRank(winnerElo)
@@ -139,6 +158,26 @@ func CalculateEloChange(winnerElo, loserElo int) EloChangeResult {
 		}
 	}
 
+	winnerBoundaryBonus := IsNearRankBoundary(winnerElo)
+	loserBoundaryBonus := IsNearRankBoundary(loserElo)
+
+	if winnerBoundaryBonus {
+		winnerChange = int(math.Round(float64(winnerChange) * BoundaryWinMultiplier))
+		if winnerChange > MaxEloGain*2 {
+			winnerChange = MaxEloGain * 2
+		}
+	}
+
+	if loserBoundaryBonus {
+		loserChange = int(math.Round(float64(loserChange) / BoundaryLossDivisor))
+		if loserChange > -MinEloLoss/2 {
+			loserChange = -MinEloLoss / 2
+			if loserChange == 0 {
+				loserChange = -5
+			}
+		}
+	}
+
 	winnerNewElo := winnerElo + winnerChange
 	loserNewElo := loserElo + loserChange
 
@@ -160,15 +199,17 @@ func CalculateEloChange(winnerElo, loserElo int) EloChangeResult {
 	}
 
 	return EloChangeResult{
-		WinnerChange:   winnerChange,
-		LoserChange:    loserChange,
-		WinnerNewElo:   winnerNewElo,
-		LoserNewElo:    loserNewElo,
-		WinnerRank:     winnerNewRank,
-		LoserRank:      loserNewRank,
-		RankChange:     rankChange,
-		WinnerPrevRank: winnerPrevRank,
-		LoserPrevRank:  loserPrevRank,
+		WinnerChange:      winnerChange,
+		LoserChange:       loserChange,
+		WinnerNewElo:      winnerNewElo,
+		LoserNewElo:       loserNewElo,
+		WinnerRank:        winnerNewRank,
+		LoserRank:         loserNewRank,
+		RankChange:        rankChange,
+		WinnerPrevRank:    winnerPrevRank,
+		LoserPrevRank:     loserPrevRank,
+		WinnerBoundaryBonus: winnerBoundaryBonus,
+		LoserBoundaryBonus:  loserBoundaryBonus,
 	}
 }
 

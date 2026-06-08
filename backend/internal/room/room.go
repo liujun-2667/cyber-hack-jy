@@ -461,6 +461,7 @@ type PlayerRankResult struct {
 	OldRank      string `json:"oldRank"`
 	NewRank      string `json:"newRank"`
 	RankChange   string `json:"rankChange"`
+	BoundaryBonus bool  `json:"boundaryBonus"`
 }
 
 func (r *Room) calculateRankResults(winnerID string) map[string]*PlayerRankResult {
@@ -576,6 +577,12 @@ func (r *Room) calculateRankResults(winnerID string) map[string]*PlayerRankResul
 			int(loserNewElo)-loserElo, int(loserNewElo),
 			string(loserNewRank), rankChangeLoser)
 		
+		cardsPlayedWinner := getPlayedCardTypes(winnerGamePlayer)
+		cardsPlayedLoser := getPlayedCardTypes(loserGamePlayer)
+		
+		database.RecordGameCardStats(gameID, winnerIDResult, cardsPlayedWinner)
+		database.RecordGameCardStats(gameID, loserID, cardsPlayedLoser)
+		
 		database.UpdatePlayerStats(winnerIDResult, true, winnerNodesDestroyed, turns)
 		database.UpdatePlayerStats(loserID, false, loserNodesDestroyed, turns)
 		
@@ -586,12 +593,10 @@ func (r *Room) calculateRankResults(winnerID string) map[string]*PlayerRankResul
 			database.UpdateBestRank(winnerIDResult, string(winnerNewRank))
 		}
 		
-		cardsPlayedWinner := getPlayedCardTypes(winnerGamePlayer)
 		for cardType, count := range cardsPlayedWinner {
 			database.UpdateCardUsage(winnerIDResult, cardType, count)
 		}
 		
-		cardsPlayedLoser := getPlayedCardTypes(loserGamePlayer)
 		for cardType, count := range cardsPlayedLoser {
 			database.UpdateCardUsage(loserID, cardType, count)
 		}
@@ -609,6 +614,7 @@ func (r *Room) calculateRankResults(winnerID string) map[string]*PlayerRankResul
 		OldRank:    winnerRank,
 		NewRank:    string(winnerNewRank),
 		RankChange: rankChangeWinner,
+		BoundaryBonus: eloResult.WinnerBoundaryBonus,
 	}
 	
 	results[loserID] = &PlayerRankResult{
@@ -621,6 +627,7 @@ func (r *Room) calculateRankResults(winnerID string) map[string]*PlayerRankResul
 		OldRank:    loserRank,
 		NewRank:    string(loserNewRank),
 		RankChange: rankChangeLoser,
+		BoundaryBonus: eloResult.LoserBoundaryBonus,
 	}
 	
 	return results

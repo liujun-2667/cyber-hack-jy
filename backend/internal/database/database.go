@@ -286,14 +286,134 @@ func GetTopCards(playerID string, limit int) ([]*CardUsageStat, error) {
 	return stats, nil
 }
 
-func UpdateCardUsage(playerID string, cardType string, count int) error {
-	query := `INSERT INTO card_usage_stats (player_id, card_type, usage_count) 
-	          VALUES ($1, $2, $3)
-	          ON CONFLICT (player_id, card_type) 
-	          DO UPDATE SET usage_count = card_usage_stats.usage_count + EXCLUDED.usage_count`
+func RecordGameCardStats(gameID string, playerID string, cardStats map[string]int) error {
+	if DB == nil {
+		return nil
+	}
 	
-	_, err := DB.Exec(query, playerID, cardType, count)
-	return err
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	
+	stmt, err := tx.Prepare(`INSERT INTO game_card_stats (game_id, player_id, card_type, usage_count) 
+	                          VALUES ($1, $2, $3, $4)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	
+	for cardType, count := range cardStats {
+		_, err = stmt.Exec(gameID, playerID, cardType, count)
+		if err != nil {
+			return err
+		}
+	}
+	
+	return tx.Commit()
+}
+
+type RecentGameRecord struct {
+	GameID        string    `json:"gameId"`
+	OpponentID    string    `json:"opponentId"`
+	OpponentName  string    `json:"opponentName"`
+	Result        string    `json:"result"`
+	EloChange     int       `json:"eloChange"`
+	TopCard       string    `json:"topCard"`
+	TopCardCount  int       `json:"topCardCount"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+func GetRecentGames(playerID string, limit int) ([]*RecentGameRecord, error) {
+	if DB == nil {
+		return make([]*RecentGameRecord, 0), nil
+	}
+
+	query := `
+		SELECT 
+			gr.id as game_id,
+			gr.created_at,
+			pgs.result,
+			pgs.elo_change,
+			(
+				SELECT p.username 
+				FROM players p 
+				WHERE p.id = ANY(gr.player_ids) AND p.id != $1
+				LIMIT 1
+			) as opponent_name,
+			(
+				SELECT p.id 
+				FROM players p 
+				WHERE p.id = ANY(gr.player_ids) AND p.id != $1
+				LIMIT 1
+			) as opponent_id,
+			(
+				SELECT gcs.card_type 
+				FROM game_card_stats gcs 
+				WHERE gcs.game_id = gr.id AND gcs.player_id = $1
+				ORDER BY gcs.usage_count DESC 
+				LIMIT 1
+			) as top_card,
+			(
+				SELECT gcs.usage_count 
+				FROM game_card_stats gcs 
+				WHERE gcs.game_id = gr.id AND gcs.player_id = $1
+				ORDER BY gcs.usage_count DESC 
+				LIMIT 1
+			) as top_card_count
+		FROM game_records gr
+		JOIN player_game_stats pgs ON pgs.game_id = gr.id AND pgs.player_id = $1
+		WHERE $1 = ANY(gr.player_ids)
+		ORDER BY gr.created_at DESC
+		LIMIT $2
+	`
+
+	rows, err := DB.Query(query, playerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]*RecentGameRecord, 0)
+	for rows.Next() {
+		record := &RecentGameRecord{}
+		var opponentName, opponentID, topCard sql.NullString
+		var topCardCount sql.NullInt32
+		
+		err := rows.Scan(
+			&record.GameID,
+			&record.CreatedAt,
+			&record.Result,
+			&record.EloChange,
+			&opponentName,
+			&opponentID,
+			&topCard,
+			&topCardCount,
+		)
+		if err != nil {
+			continue
+		}
+		
+		if opponentName.Valid {
+			record.OpponentName = opponentName.String
+		} else {
+			record.OpponentName = "未知对手"
+		}
+		if opponentID.Valid {
+			record.OpponentID = opponentID.String
+		}
+		if topCard.Valid {
+			record.TopCard = topCard.String
+		}
+		if topCardCount.Valid {
+			record.TopCardCount = int(topCardCount.Int32)
+		}
+		
+		records = append(records, record)
+	}
+
+	return records, nil
 }
 
 type PlayerStatsSummary struct {
