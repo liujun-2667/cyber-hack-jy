@@ -260,14 +260,20 @@ func (s *Server) handleGetSeason(w http.ResponseWriter, r *http.Request) {
 	}
 
 	timeRemaining := season.GetManager().GetTimeRemaining()
+	totalSeconds := int(timeRemaining.Seconds())
 	daysRemaining := int(timeRemaining.Hours() / 24)
 	hoursRemaining := int(timeRemaining.Hours()) % 24
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"season":         currentSeason,
-		"daysRemaining":  daysRemaining,
+		"id":            currentSeason.ID,
+		"name":          currentSeason.Name,
+		"startDate":     currentSeason.StartDate,
+		"endDate":       currentSeason.EndDate,
+		"isActive":      currentSeason.IsActive,
+		"timeRemaining": totalSeconds,
+		"daysRemaining": daysRemaining,
 		"hoursRemaining": hoursRemaining,
-		"totalSeconds":   int(timeRemaining.Seconds()),
+		"totalSeconds":  totalSeconds,
 	})
 }
 

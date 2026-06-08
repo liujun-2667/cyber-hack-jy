@@ -205,6 +205,10 @@ type LeaderboardEntry struct {
 }
 
 func GetLeaderboard(limit int) ([]*LeaderboardEntry, error) {
+	if DB == nil {
+		return make([]*LeaderboardEntry, 0), nil
+	}
+
 	query := `SELECT id, username, elo_rating, wins, losses, current_rank,
 	          CASE WHEN (wins + losses) > 0 THEN ROUND((wins::float / (wins + losses)) * 100, 1) ELSE 0 END as win_rate
 	          FROM players 
@@ -213,7 +217,7 @@ func GetLeaderboard(limit int) ([]*LeaderboardEntry, error) {
 	
 	rows, err := DB.Query(query, limit)
 	if err != nil {
-		return nil, err
+		return make([]*LeaderboardEntry, 0), nil
 	}
 	defer rows.Close()
 	
@@ -224,7 +228,7 @@ func GetLeaderboard(limit int) ([]*LeaderboardEntry, error) {
 		err := rows.Scan(&entry.PlayerID, &entry.Username, &entry.EloRating, 
 			&entry.Wins, &entry.Losses, &entry.RankName, &entry.WinRate)
 		if err != nil {
-			return nil, err
+			continue
 		}
 		entry.Rank = rank
 		rank++
@@ -235,13 +239,17 @@ func GetLeaderboard(limit int) ([]*LeaderboardEntry, error) {
 }
 
 func GetPlayerRank(playerID string) (int, error) {
+	if DB == nil {
+		return 9999, nil
+	}
+
 	var rank int
 	query := `SELECT COUNT(*) + 1 FROM players WHERE elo_rating > (
 	          SELECT elo_rating FROM players WHERE id = $1)`
 	
 	err := DB.QueryRow(query, playerID).Scan(&rank)
 	if err != nil {
-		return 0, err
+		return 9999, nil
 	}
 	return rank, nil
 }
@@ -301,40 +309,50 @@ type PlayerStatsSummary struct {
 }
 
 func GetPlayerStatsSummary(playerID string) (*PlayerStatsSummary, error) {
-	query := `SELECT 
-	          wins + losses as total_games,
-	          wins,
-	          losses,
-	          CASE WHEN (wins + losses) > 0 THEN ROUND((wins::float / (wins + losses)) * 100, 1) ELSE 0 END as win_rate,
-	          current_streak,
-	          best_streak,
-	          CASE WHEN (wins + losses) > 0 THEN ROUND((total_nodes_destroyed::float / (wins + losses)), 1) ELSE 0 END as avg_nodes_destroyed,
-	          CASE WHEN (wins + losses) > 0 THEN ROUND((total_turns_survived::float / (wins + losses)), 1) ELSE 0 END as avg_turns_survived
-	          FROM players WHERE id = $1`
-	
-	stats := &PlayerStatsSummary{}
-	err := DB.QueryRow(query, playerID).Scan(
-		&stats.TotalGames,
-		&stats.Wins,
-		&stats.Losses,
-		&stats.WinRate,
-		&stats.CurrentStreak,
-		&stats.BestStreak,
-		&stats.AvgNodesDestroyed,
-		&stats.AvgTurnsSurvived,
-	)
+	player, err := GetPlayerByID(playerID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("player not found")
 	}
-	
+
+	totalGames := player.Wins + player.Losses
+	winRate := 0.0
+	if totalGames > 0 {
+		winRate = float64(player.Wins) / float64(totalGames) * 100
+	}
+
+	avgNodes := 0.0
+	avgTurns := 0.0
+	if totalGames > 0 {
+		avgNodes = float64(player.TotalNodesDestroyed) / float64(totalGames)
+		avgTurns = float64(player.TotalTurnsSurvived) / float64(totalGames)
+	}
+
+	stats := &PlayerStatsSummary{
+		TotalGames:        totalGames,
+		Wins:              player.Wins,
+		Losses:            player.Losses,
+		WinRate:           roundFloat(winRate, 1),
+		CurrentStreak:     player.CurrentStreak,
+		BestStreak:        player.BestStreak,
+		AvgNodesDestroyed: roundFloat(avgNodes, 1),
+		AvgTurnsSurvived:  roundFloat(avgTurns, 1),
+		TopCards:          make([]*CardUsageStat, 0),
+	}
+
 	topCards, err := GetTopCards(playerID, 3)
-	if err != nil {
-		stats.TopCards = make([]*CardUsageStat, 0)
-	} else {
+	if err == nil && len(topCards) > 0 {
 		stats.TopCards = topCards
 	}
-	
+
 	return stats, nil
+}
+
+func roundFloat(val float64, precision int) float64 {
+	ratio := 1.0
+	for i := 0; i < precision; i++ {
+		ratio *= 10
+	}
+	return float64(int(val*ratio+0.5)) / ratio
 }
 
 func RecordGameResult(gameID string, roomID string, playerIDs []string, winnerID string, gameMode string, turns int, duration int, seasonID int) error {

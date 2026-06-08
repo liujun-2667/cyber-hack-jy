@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"cyberhack/internal/database"
@@ -34,10 +35,13 @@ func GetTopPlayers(limit int) ([]*LeaderboardEntry, error) {
 
 	entries, err := loadFromDB(limit)
 	if err != nil {
-		return nil, err
+		log.Printf("Error loading leaderboard from DB: %v", err)
+		return make([]*LeaderboardEntry, 0), nil
 	}
 
-	go saveToCache(entries)
+	if len(entries) > 0 {
+		go saveToCache(entries)
+	}
 
 	return entries, nil
 }
