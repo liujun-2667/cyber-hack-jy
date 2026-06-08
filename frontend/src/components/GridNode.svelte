@@ -34,15 +34,6 @@
     }
   }
 
-  function handleKeydown(e) {
-    if (targetMode && isAlive && !isUnknown) {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        onClick()
-      }
-    }
-  }
-
   function getTypeIcon(type) {
     const icons = {
       core: '◈',
@@ -61,13 +52,10 @@
   class:dead={!isAlive}
   class:targetable={targetMode && isAlive && !isUnknown}
   transform="translate({x}, {y})"
-  role={targetMode && isAlive && !isUnknown ? 'button' : undefined}
-  tabindex={targetMode && isAlive && !isUnknown ? 0 : -1}
-  aria-label={targetMode && isAlive && !isUnknown ? `选择节点 ${node?.name || '未知'}` : undefined}
   on:click={handleClick}
-  on:keydown={handleKeydown}
   style="pointer-events: all; cursor: {targetMode && isAlive && !isUnknown ? 'pointer' : 'default'}"
 >
+  <title>{node?.name || (isUnknown ? '未知节点' : '网络节点')}</title>
   <defs>
     <filter id="glow-{node?.id || 'unknown'}" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="3" result="coloredBlur"/>

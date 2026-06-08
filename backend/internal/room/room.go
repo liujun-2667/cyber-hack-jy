@@ -120,9 +120,9 @@ func (r *Room) PlaceNode(playerID, nodeType string, x, y int) {
 
 func (r *Room) StartGame(playerID string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	if r.gameStarted {
+		r.mu.Unlock()
 		return
 	}
 
@@ -130,33 +130,41 @@ func (r *Room) StartGame(playerID string) {
 
 	allReady := len(r.players) >= 2 && len(r.readyPlayers) == len(r.players)
 	if !allReady {
+		r.mu.Unlock()
 		return
 	}
 
-	r.startGameInternal()
-}
-
-func (r *Room) ForceStartGame() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.gameStarted {
-		return
-	}
-
-	r.startGameInternal()
-}
-
-func (r *Room) startGameInternal() {
 	r.gameStarted = true
 	r.Game.StartGame()
+	r.autoPlaceNodes()
+	r.mu.Unlock()
 
 	r.Broadcast("game_started", map[string]interface{}{
 		"phase":     "placement",
 		"playerIds": r.playerOrder,
 	})
 
+	r.startFirstTurn()
+}
+
+func (r *Room) ForceStartGame() {
+	r.mu.Lock()
+
+	if r.gameStarted {
+		r.mu.Unlock()
+		return
+	}
+
+	r.gameStarted = true
+	r.Game.StartGame()
 	r.autoPlaceNodes()
+	r.mu.Unlock()
+
+	r.Broadcast("game_started", map[string]interface{}{
+		"phase":     "placement",
+		"playerIds": r.playerOrder,
+	})
+
 	r.startFirstTurn()
 }
 
@@ -205,20 +213,24 @@ func (r *Room) startFirstTurn() {
 }
 
 func (r *Room) startProgrammingPhase() {
-	r.Broadcast("phase_change", map[string]interface{}{
-		"phase": "programming",
-		"turn":  r.Game.CurrentTurn,
-		"time":  r.Game.Config.ProgrammingTime,
-	})
-
-	r.sendAllPlayerStates()
-
+	r.mu.Lock()
+	currentTurn := r.Game.CurrentTurn
+	programmingTime := r.Game.Config.ProgrammingTime
 	if r.phaseTimer != nil {
 		r.phaseTimer.Stop()
 	}
-	r.phaseTimer = time.AfterFunc(time.Duration(r.Game.Config.ProgrammingTime)*time.Second, func() {
+	r.phaseTimer = time.AfterFunc(time.Duration(programmingTime)*time.Second, func() {
 		r.ExecutePhase()
 	})
+	r.mu.Unlock()
+
+	r.Broadcast("phase_change", map[string]interface{}{
+		"phase": "programming",
+		"turn":  currentTurn,
+		"time":  programmingTime,
+	})
+
+	r.sendAllPlayerStates()
 }
 
 func (r *Room) PlayCard(playerID, cardID, targetNodeID, targetPlayerID string) bool {
@@ -232,49 +244,59 @@ func (r *Room) PlayCard(playerID, cardID, targetNodeID, targetPlayerID string) b
 func (r *Room) PlayerReady(playerID string) {
 	r.mu.Lock()
 	r.readyPlayers[playerID] = true
-	r.mu.Unlock()
 
 	allReady := true
-	r.mu.RLock()
 	for id := range r.players {
 		if !r.readyPlayers[id] {
 			allReady = false
 			break
 		}
 	}
-	r.mu.RUnlock()
 
-	if allReady && r.Game.Phase == game.PhaseProgramming {
+	isProgrammingPhase := r.Game.Phase == game.PhaseProgramming
+	if allReady && isProgrammingPhase {
 		if r.phaseTimer != nil {
 			r.phaseTimer.Stop()
+			r.phaseTimer = nil
 		}
+	}
+	r.mu.Unlock()
+
+	if allReady && isProgrammingPhase {
 		r.ExecutePhase()
 	}
 }
 
 func (r *Room) ExecutePhase() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	if r.Game.Phase != game.PhaseProgramming {
+		r.mu.Unlock()
 		return
 	}
 
 	r.readyPlayers = make(map[string]bool)
-
 	r.Game.ExecutePhase()
 
+	isGameOver := r.Game.Phase == game.PhaseGameOver
+	winnerID := r.Game.WinnerID
+	turns := r.Game.CurrentTurn
+	actions := r.Game.TurnActions
+	gameLog := r.Game.GameLog
+
+	r.mu.Unlock()
+
 	r.Broadcast("execution_result", map[string]interface{}{
-		"actions": r.Game.TurnActions,
-		"gameLog": r.Game.GameLog,
+		"actions": actions,
+		"gameLog": gameLog,
 	})
 
 	r.sendAllPlayerStates()
 
-	if r.Game.Phase == game.PhaseGameOver {
+	if isGameOver {
 		r.Broadcast("game_over", map[string]interface{}{
-			"winnerId": r.Game.WinnerID,
-			"turns":    r.Game.CurrentTurn,
+			"winnerId": winnerID,
+			"turns":    turns,
 		})
 		return
 	}
@@ -285,13 +307,18 @@ func (r *Room) ExecutePhase() {
 }
 
 func (r *Room) sendAllPlayerStates() {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	for playerID := range r.players {
-		state := r.GetPlayerState(playerID)
-		r.SendToPlayer(playerID, "game_state", state)
+		state := r.getPlayerStateLocked(playerID)
+		if state != nil {
+			r.hubBroadcast(playerID, "game_state", state)
+		}
 	}
 }
 
-func (r *Room) GetPlayerState(playerID string) map[string]interface{} {
+func (r *Room) getPlayerStateLocked(playerID string) map[string]interface{} {
 	player, exists := r.players[playerID]
 	if !exists {
 		return nil
@@ -369,6 +396,12 @@ func (r *Room) GetPlayerState(playerID string) map[string]interface{} {
 	state["opponents"] = opponents
 
 	return state
+}
+
+func (r *Room) GetPlayerState(playerID string) map[string]interface{} {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.getPlayerStateLocked(playerID)
 }
 
 func gridToArray(grid [5][5]*game.Node) [][]interface{} {
