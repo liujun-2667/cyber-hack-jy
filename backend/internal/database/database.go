@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-	_ "github.com/lib/pq"
 )
 
 var DB *sql.DB
@@ -134,4 +133,4 @@ type Player struct {
 	LastLogin    time.Time `json:"lastLogin"`
 }
 
-var _ = fmt.Sprintf
+var _ = pq.Array

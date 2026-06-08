@@ -5,14 +5,15 @@ import (
 	"net/http"
 	"os"
 
-	"cyberhack/internal/websocket"
-	"cyberhack/internal/redis"
+	ws "cyberhack/internal/websocket"
 	"cyberhack/internal/database"
-	"github.com/gorilla/websocket"
+	redisClient "cyberhack/internal/redis"
+
 	"github.com/google/uuid"
+	gorillaWs "github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
+var upgrader = gorillaWs.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
@@ -21,10 +22,10 @@ var upgrader = websocket.Upgrader{
 }
 
 type Server struct {
-	hub *websocket.Hub
+	hub *ws.Hub
 }
 
-func NewServer(hub *websocket.Hub) *Server {
+func NewServer(hub *ws.Hub) *Server {
 	return &Server{hub: hub}
 }
 
@@ -45,7 +46,7 @@ func (s *Server) ServeWebSocket(w http.ResponseWriter, r *http.Request) {
 		username = "Hacker-" + playerID[:6]
 	}
 
-	client := websocket.NewClient(playerID, username, conn, s.hub)
+	client := ws.NewClient(playerID, username, conn, s.hub)
 	s.hub.Register <- client
 
 	go client.WritePump()
@@ -61,7 +62,7 @@ func (s *Server) SetupRoutes(mux *http.ServeMux) {
 }
 
 func Start() {
-	if err := redis.Init(); err != nil {
+	if err := redisClient.Init(); err != nil {
 		log.Printf("Warning: Redis connection failed: %v", err)
 		log.Println("Running without Redis - using in-memory storage")
 	} else {
@@ -75,7 +76,7 @@ func Start() {
 		log.Println("Database connected successfully")
 	}
 
-	hub := websocket.NewHub()
+	hub := ws.NewHub()
 	go hub.Run()
 
 	server := NewServer(hub)

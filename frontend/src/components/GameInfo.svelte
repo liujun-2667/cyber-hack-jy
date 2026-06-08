@@ -7,6 +7,38 @@
   $: cooldowns = gameState?.cooldowns || {}
 
   $: cooldownList = Object.entries(cooldowns || {}).filter(([, cd]) => cd > 0)
+
+  function getPhaseText(phase) {
+    const texts = {
+      setup: '准备',
+      placement: '布阵',
+      programming: '编程',
+      execution: '执行',
+      gameover: '结束'
+    }
+    return texts[phase] || phase
+  }
+
+  function getCardName(type) {
+    const names = {
+      port_scan: '端口扫描',
+      brute_force: '暴力破解',
+      sql_injection: 'SQL注入',
+      ddos: 'DDoS洪水',
+      trojan: '木马植入',
+      firewall: '防火墙',
+      ids: '入侵检测',
+      encryption: '数据加密',
+      honeypot: '蜜罐陷阱',
+      traffic_clean: '流量清洗',
+      bandwidth_upgrade: '带宽升级',
+      node_repair: '节点修复',
+      data_theft: '数据窃取',
+      backdoor: '后门安装',
+      sniff: '链路嗅探'
+    }
+    return names[type] || type
+  }
 </script>
 
 <div class="game-info panel">
@@ -248,37 +280,3 @@
     color: var(--neon-cyan);
   }
 </style>
-
-<script>
-  function getPhaseText(phase) {
-    const texts = {
-      setup: '准备',
-      placement: '布阵',
-      programming: '编程',
-      execution: '执行',
-      gameover: '结束'
-    }
-    return texts[phase] || phase
-  }
-
-  function getCardName(type) {
-    const names = {
-      port_scan: '端口扫描',
-      brute_force: '暴力破解',
-      sql_injection: 'SQL注入',
-      ddos: 'DDoS洪水',
-      trojan: '木马植入',
-      firewall: '防火墙',
-      ids: '入侵检测',
-      encryption: '数据加密',
-      honeypot: '蜜罐陷阱',
-      traffic_clean: '流量清洗',
-      bandwidth_upgrade: '带宽升级',
-      node_repair: '节点修复',
-      data_theft: '数据窃取',
-      backdoor: '后门安装',
-      sniff: '链路嗅探'
-    }
-    return names[type] || type
-  }
-</script>

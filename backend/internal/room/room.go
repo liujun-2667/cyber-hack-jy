@@ -1,7 +1,6 @@
 package room
 
 import (
-	"encoding/json"
 	"sync"
 	"time"
 
