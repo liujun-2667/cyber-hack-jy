@@ -314,6 +314,20 @@ func RecordGameCardStats(gameID string, playerID string, cardStats map[string]in
 	return tx.Commit()
 }
 
+func UpdateCardUsage(playerID string, cardType string, count int) error {
+	if DB == nil {
+		return nil
+	}
+
+	query := `INSERT INTO card_usage_stats (player_id, card_type, usage_count) 
+	          VALUES ($1, $2, $3)
+	          ON CONFLICT (player_id, card_type) 
+	          DO UPDATE SET usage_count = card_usage_stats.usage_count + EXCLUDED.usage_count`
+	
+	_, err := DB.Exec(query, playerID, cardType, count)
+	return err
+}
+
 type RecentGameRecord struct {
 	GameID        string    `json:"gameId"`
 	OpponentID    string    `json:"opponentId"`
@@ -336,35 +350,20 @@ func GetRecentGames(playerID string, limit int) ([]*RecentGameRecord, error) {
 			gr.created_at,
 			pgs.result,
 			pgs.elo_change,
-			(
-				SELECT p.username 
-				FROM players p 
-				WHERE p.id = ANY(gr.player_ids) AND p.id != $1
-				LIMIT 1
-			) as opponent_name,
-			(
-				SELECT p.id 
-				FROM players p 
-				WHERE p.id = ANY(gr.player_ids) AND p.id != $1
-				LIMIT 1
-			) as opponent_id,
-			(
-				SELECT gcs.card_type 
-				FROM game_card_stats gcs 
-				WHERE gcs.game_id = gr.id AND gcs.player_id = $1
-				ORDER BY gcs.usage_count DESC 
-				LIMIT 1
-			) as top_card,
-			(
-				SELECT gcs.usage_count 
-				FROM game_card_stats gcs 
-				WHERE gcs.game_id = gr.id AND gcs.player_id = $1
-				ORDER BY gcs.usage_count DESC 
-				LIMIT 1
-			) as top_card_count
+			opp.username as opponent_name,
+			opp.id as opponent_id,
+			gcs.card_type as top_card,
+			gcs.usage_count as top_card_count
 		FROM game_records gr
 		JOIN player_game_stats pgs ON pgs.game_id = gr.id AND pgs.player_id = $1
-		WHERE $1 = ANY(gr.player_ids)
+		JOIN player_game_stats opp_pgs ON opp_pgs.game_id = gr.id AND opp_pgs.player_id != $1
+		JOIN players opp ON opp.id = opp_pgs.player_id
+		LEFT JOIN game_card_stats gcs ON gcs.game_id = gr.id AND gcs.player_id = $1
+			AND gcs.usage_count = (
+				SELECT MAX(usage_count) 
+				FROM game_card_stats 
+				WHERE game_id = gr.id AND player_id = $1
+			)
 		ORDER BY gr.created_at DESC
 		LIMIT $2
 	`
@@ -405,6 +404,8 @@ func GetRecentGames(playerID string, limit int) ([]*RecentGameRecord, error) {
 		}
 		if topCard.Valid {
 			record.TopCard = topCard.String
+		} else {
+			record.TopCard = ""
 		}
 		if topCardCount.Valid {
 			record.TopCardCount = int(topCardCount.Int32)

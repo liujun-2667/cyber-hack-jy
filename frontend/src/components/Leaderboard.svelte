@@ -13,6 +13,8 @@
   let secondsAgo = 0
   let refreshInterval = null
   let timerInterval = null
+  let updatedIds = new Set()
+  let newIds = new Set()
 
   const REFRESH_INTERVAL = 15000
 
@@ -24,31 +26,43 @@
     }
   }
 
-  function mergeLeaderboard(newEntries) {
-    const oldMap = new Map(leaderboard.map(e => [e.playerId, { ...e }]))
-    const result = []
+  function isEntriesEqual(a, b) {
+    const keysA = Object.keys(a).filter(k => !k.startsWith('_'))
+    const keysB = Object.keys(b).filter(k => !k.startsWith('_'))
+    if (keysA.length !== keysB.length) return false
+    for (const key of keysA) {
+      if (a[key] !== b[key]) return false
+    }
+    return true
+  }
+
+  function findChangedIds(oldEntries, newEntries) {
+    const oldMap = new Map(oldEntries.map(e => [e.playerId, e]))
+    const changed = new Set()
+    const added = new Set()
     
     for (const newEntry of newEntries) {
       const oldEntry = oldMap.get(newEntry.playerId)
       if (oldEntry) {
-        let changed = false
-        for (const key of Object.keys(newEntry)) {
-          if (oldEntry[key] !== newEntry[key]) {
-            changed = true
-            break
-          }
-        }
-        if (changed) {
-          result.push({ ...newEntry, _updated: true })
-        } else {
-          result.push({ ...newEntry })
+        if (!isEntriesEqual(oldEntry, newEntry)) {
+          changed.add(newEntry.playerId)
         }
       } else {
-        result.push({ ...newEntry, _new: true })
+        added.add(newEntry.playerId)
       }
     }
     
-    return result
+    return { changed, added }
+  }
+
+  function triggerAnimation(changed, added) {
+    updatedIds = new Set(changed)
+    newIds = new Set(added)
+    
+    setTimeout(() => {
+      updatedIds = new Set()
+      newIds = new Set()
+    }, 1000)
   }
 
   async function loadLeaderboard() {
@@ -57,7 +71,16 @@
       const data = await gameStore.fetchLeaderboard(20, pid)
       if (data) {
         const newLeaderboard = data.leaderboard || []
-        leaderboard = mergeLeaderboard(newLeaderboard)
+        const oldLeaderboard = leaderboard
+        
+        if (oldLeaderboard.length > 0) {
+          const { changed, added } = findChangedIds(oldLeaderboard, newLeaderboard)
+          if (changed.size > 0 || added.size > 0) {
+            triggerAnimation(changed, added)
+          }
+        }
+        
+        leaderboard = newLeaderboard
         playerRank = data.playerRank || null
         lastUpdateTime = Date.now()
         secondsAgo = 0
@@ -145,8 +168,8 @@
             <div 
               class="leaderboard-item"
               class:is-me={entry.playerId === myPlayerId}
-              class:updated={entry._updated}
-              class:new-entry={entry._new}
+              class:updated={updatedIds.has(entry.playerId)}
+              class:new-entry={newIds.has(entry.playerId)}
             >
               <span class="col-rank">
                 <span class="rank-badge {getRankBadgeClass(entry.rank)}">
