@@ -3,6 +3,7 @@
   import { onMount, onDestroy } from 'svelte'
   import PlayerRank from './PlayerRank.svelte'
   import Leaderboard from './Leaderboard.svelte'
+  import TournamentLobby from './TournamentLobby.svelte'
   import { formatElo, getRankInfo } from '../utils/rank.js'
 
   export let onLogin
@@ -12,6 +13,7 @@
   let isMatching = false
   let matchStatus = ''
   let showLeaderboard = false
+  let showTournamentLobby = false
   let matchWaitTime = 0
   let matchRangeLabel = '±200'
   let matchTimerInterval = null
@@ -95,6 +97,14 @@
     showLeaderboard = false
   }
 
+  function openTournamentLobby() {
+    showTournamentLobby = true
+  }
+
+  function closeTournamentLobby() {
+    showTournamentLobby = false
+  }
+
   async function loadSeasonInfo() {
     try {
       seasonInfo = await gameStore.fetchSeasonInfo()
@@ -143,8 +153,12 @@
         <span class="season-time">剩余 {formatTimeRemaining(seasonInfo?.timeRemaining)}</span>
       </div>
       <div class="top-bar-right">
-        <button class="leaderboard-btn" on:click={openLeaderboard}>
+        <button class="leaderboard-btn" on:click={openTournamentLobby}>
           <span>🏆</span>
+          锦标赛
+        </button>
+        <button class="leaderboard-btn" on:click={openLeaderboard}>
+          <span>📊</span>
           排行榜
         </button>
         <PlayerRank />
@@ -263,6 +277,10 @@
 
   {#if showLeaderboard}
     <Leaderboard onClose={closeLeaderboard} />
+  {/if}
+
+  {#if showTournamentLobby}
+    <TournamentLobby onClose={closeTournamentLobby} />
   {/if}
 </div>
 

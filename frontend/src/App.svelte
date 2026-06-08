@@ -3,10 +3,13 @@
   import Lobby from './components/Lobby.svelte'
   import GameBoard from './components/GameBoard.svelte'
   import ReplayView from './components/ReplayView.svelte'
+  import TournamentWatch from './components/TournamentWatch.svelte'
   import { gameStore } from './store/gameStore.js'
 
   let currentView = 'lobby'
   let username = ''
+
+  $: watchingTournament = $gameStore.watchingTournament
 
   $: if ($gameStore.inGame && !$gameStore.replayMode) {
     currentView = 'game'
@@ -27,6 +30,12 @@
   function handleBackFromReplay() {
     currentView = 'game'
   }
+
+  function handleCloseTournamentWatch() {
+    if (watchingTournament) {
+      gameStore.unwatchTournament(watchingTournament)
+    }
+  }
 </script>
 
 <div class="app-container">
@@ -38,6 +47,10 @@
     <GameBoard onBack={handleBackToLobby} onWatchReplay={() => currentView = 'replay'} />
   {:else if currentView === 'replay'}
     <ReplayView onBack={handleBackFromReplay} />
+  {/if}
+
+  {#if watchingTournament}
+    <TournamentWatch onClose={handleCloseTournamentWatch} />
   {/if}
 </div>
 

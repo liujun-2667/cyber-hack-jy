@@ -20,7 +20,13 @@ function createGameStore() {
     isMatching: false,
     rankResults: null,
     seasonInfo: null,
-    onlineCount: 0
+    onlineCount: 0,
+    tournamentList: [],
+    currentTournament: null,
+    currentBracket: [],
+    tournamentChat: [],
+    watchingTournament: null,
+    isInTournament: false
   })
 
   let ws = null
@@ -221,6 +227,75 @@ function createGameStore() {
       case 'online_count':
         update(state => ({ ...state, onlineCount: message.payload.count }))
         break
+      case 'tournament_list':
+      case 'tournament_list_update':
+        update(state => ({ 
+          ...state, 
+          tournamentList: message.payload.tournaments || [] 
+        }))
+        break
+      case 'tournament_created':
+      case 'tournament_joined':
+        update(state => ({
+          ...state,
+          isInTournament: true,
+          currentTournament: message.payload.tournament || state.currentTournament
+        }))
+        break
+      case 'tournament_left':
+        update(state => ({
+          ...state,
+          isInTournament: false,
+          currentTournament: null
+        }))
+        break
+      case 'tournament_update':
+        update(state => ({
+          ...state,
+          currentTournament: state.currentTournament?.id === message.payload.tournament?.id 
+            ? message.payload.tournament 
+            : state.currentTournament
+        }))
+        break
+      case 'tournament_watching':
+        update(state => ({
+          ...state,
+          watchingTournament: message.payload.tournamentId,
+          currentTournament: message.payload.tournament,
+          currentBracket: message.payload.bracket || [],
+          tournamentChat: message.payload.chatMessages || []
+        }))
+        break
+      case 'tournament_unwatched':
+        update(state => ({
+          ...state,
+          watchingTournament: null,
+          currentBracket: [],
+          tournamentChat: []
+        }))
+        break
+      case 'bracket_update':
+        update(state => ({
+          ...state,
+          currentBracket: message.payload.matches || []
+        }))
+        break
+      case 'chat_update':
+        update(state => ({
+          ...state,
+          tournamentChat: message.payload.messages || []
+        }))
+        break
+      case 'tournament_cancelled':
+        update(state => ({
+          ...state,
+          isInTournament: false,
+          currentTournament: null,
+          watchingTournament: null
+        }))
+        break
+      case 'tournament_match_start':
+        break
       default:
         console.log('Unhandled message type:', message.type)
     }
@@ -399,6 +474,104 @@ function createGameStore() {
     }))
   }
 
+  function createTournament(name, maxPlayers, minRank, durationMinutes) {
+    send('tournament_create', { name, maxPlayers, minRank, durationMinutes })
+  }
+
+  function requestTournamentList() {
+    send('tournament_list')
+  }
+
+  function joinTournament(tournamentId) {
+    send('tournament_join', { tournamentId })
+  }
+
+  function leaveTournament(tournamentId) {
+    send('tournament_leave', { tournamentId })
+  }
+
+  function watchTournament(tournamentId) {
+    send('tournament_watch', { tournamentId })
+  }
+
+  function unwatchTournament(tournamentId) {
+    send('tournament_unwatch', { tournamentId })
+  }
+
+  function requestTournamentDetail(tournamentId) {
+    send('tournament_detail', { tournamentId })
+  }
+
+  function requestTournamentBracket(tournamentId) {
+    send('tournament_bracket', { tournamentId })
+  }
+
+  function sendTournamentChat(tournamentId, message) {
+    send('tournament_chat', { tournamentId, message })
+  }
+
+  function requestTournamentChatHistory(tournamentId, limit = 50) {
+    send('tournament_chat_history', { tournamentId, limit })
+  }
+
+  async function fetchTournaments(status = '') {
+    try {
+      let url = `${getApiBaseUrl()}/api/tournaments`
+      if (status) {
+        url += `?status=${status}`
+      }
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error('Failed to fetch tournaments')
+      }
+      const data = await response.json()
+      update(state => ({ ...state, tournamentList: data.tournaments || [] }))
+      return data.tournaments || []
+    } catch (error) {
+      console.error('Error fetching tournaments:', error)
+      return []
+    }
+  }
+
+  async function fetchTournament(tournamentId) {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/tournament?tournamentId=${tournamentId}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch tournament')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching tournament:', error)
+      return null
+    }
+  }
+
+  async function fetchTournamentBracket(tournamentId) {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/tournament/bracket?tournamentId=${tournamentId}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch bracket')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching bracket:', error)
+      return null
+    }
+  }
+
+  async function fetchPlayerTournaments(playerId, limit = 20) {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/player/tournaments?playerId=${playerId}&limit=${limit}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch player tournaments')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching player tournaments:', error)
+      return { tournaments: [] }
+    }
+  }
+
   return {
     subscribe,
     connect,
@@ -422,7 +595,21 @@ function createGameStore() {
     setReplayPlaying,
     setReplaySpeed,
     exitReplay,
-    getApiBaseUrl
+    getApiBaseUrl,
+    createTournament,
+    requestTournamentList,
+    joinTournament,
+    leaveTournament,
+    watchTournament,
+    unwatchTournament,
+    requestTournamentDetail,
+    requestTournamentBracket,
+    sendTournamentChat,
+    requestTournamentChatHistory,
+    fetchTournaments,
+    fetchTournament,
+    fetchTournamentBracket,
+    fetchPlayerTournaments
   }
 }
 

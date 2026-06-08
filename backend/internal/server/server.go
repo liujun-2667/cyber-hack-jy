@@ -13,6 +13,7 @@ import (
 	"cyberhack/internal/replay"
 	redisClient "cyberhack/internal/redis"
 	"cyberhack/internal/season"
+	"cyberhack/internal/tournament"
 
 	"github.com/google/uuid"
 	gorillaWs "github.com/gorilla/websocket"
@@ -71,6 +72,10 @@ func (s *Server) SetupRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/leaderboard", s.handleGetLeaderboard)
 	mux.HandleFunc("/api/player/recent-games", s.handleGetRecentGames)
 	mux.HandleFunc("/api/season", s.handleGetSeason)
+	mux.HandleFunc("/api/tournaments", s.handleGetTournaments)
+	mux.HandleFunc("/api/tournament", s.handleGetTournament)
+	mux.HandleFunc("/api/tournament/bracket", s.handleGetTournamentBracket)
+	mux.HandleFunc("/api/player/tournaments", s.handleGetPlayerTournaments)
 }
 
 func (s *Server) handleGetReplays(w http.ResponseWriter, r *http.Request) {
@@ -312,6 +317,148 @@ func (s *Server) handleGetSeason(w http.ResponseWriter, r *http.Request) {
 		"daysRemaining": daysRemaining,
 		"hoursRemaining": hoursRemaining,
 		"totalSeconds":  totalSeconds,
+	})
+}
+
+func (s *Server) handleGetTournaments(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	status := r.URL.Query().Get("status")
+	var tournaments []*database.Tournament
+	var err error
+
+	tm := tournament.GetManager()
+
+	if status != "" {
+		tournaments, err = database.GetTournamentsByStatus(status)
+	} else {
+		tournaments = tm.GetActiveTournaments()
+	}
+
+	if err != nil && tournaments == nil {
+		tournaments = make([]*database.Tournament, 0)
+	}
+
+	tournamentList := make([]map[string]interface{}, 0)
+	for _, t := range tournaments {
+		playerCount, _ := database.GetTournamentPlayerCount(t.ID)
+		tournamentList = append(tournamentList, map[string]interface{}{
+			"id":                   t.ID,
+			"name":                 t.Name,
+			"maxPlayers":           t.MaxPlayers,
+			"minRank":              t.MinRank,
+			"status":               t.Status,
+			"registrationDeadline": t.RegistrationDeadline,
+			"currentRound":         t.CurrentRound,
+			"totalRounds":          t.TotalRounds,
+			"playerCount":          playerCount,
+			"createdAt":            t.CreatedAt,
+		})
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tournaments": tournamentList,
+	})
+}
+
+func (s *Server) handleGetTournament(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	tournamentID := r.URL.Query().Get("tournamentId")
+	if tournamentID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "tournamentId is required"})
+		return
+	}
+
+	tm := tournament.GetManager()
+	data, err := tm.GetTournamentWithPlayerCount(tournamentID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "tournament not found"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(data)
+}
+
+func (s *Server) handleGetTournamentBracket(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	tournamentID := r.URL.Query().Get("tournamentId")
+	if tournamentID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "tournamentId is required"})
+		return
+	}
+
+	tm := tournament.GetManager()
+	matches, err := tm.GetBracket(tournamentID)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "tournament not found"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tournamentId": tournamentID,
+		"matches":      matches,
+	})
+}
+
+func (s *Server) handleGetPlayerTournaments(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	playerID := r.URL.Query().Get("playerId")
+	if playerID == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "playerId is required"})
+		return
+	}
+
+	limitStr := r.URL.Query().Get("limit")
+	limit := 20
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	records, err := database.GetPlayerTournamentRecords(playerID, limit)
+	if err != nil {
+		records = make([]*database.TournamentRecord, 0)
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tournaments": records,
 	})
 }
 

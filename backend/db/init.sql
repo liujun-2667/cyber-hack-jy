@@ -93,3 +93,82 @@ CREATE INDEX idx_season_player ON season_player_stats(season_id, player_id);
 INSERT INTO seasons (name, start_date, end_date, is_active)
 SELECT '第1赛季', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '30 days', true
 WHERE NOT EXISTS (SELECT 1 FROM seasons);
+
+CREATE TABLE IF NOT EXISTS tournaments (
+    id UUID PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    max_players INTEGER NOT NULL,
+    min_rank VARCHAR(20) DEFAULT 'none',
+    creator_id UUID REFERENCES players(id),
+    status VARCHAR(20) DEFAULT 'registering',
+    registration_deadline TIMESTAMP NOT NULL,
+    started_at TIMESTAMP,
+    ended_at TIMESTAMP,
+    winner_id UUID REFERENCES players(id),
+    current_round INTEGER DEFAULT 0,
+    total_rounds INTEGER DEFAULT 0,
+    bracket JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tournament_players (
+    id SERIAL PRIMARY KEY,
+    tournament_id UUID REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id UUID REFERENCES players(id),
+    username VARCHAR(50) NOT NULL,
+    elo_rating INTEGER DEFAULT 1200,
+    current_rank VARCHAR(20) DEFAULT 'bronze',
+    seed INTEGER,
+    final_position INTEGER,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tournament_id, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_matches (
+    id UUID PRIMARY KEY,
+    tournament_id UUID REFERENCES tournaments(id) ON DELETE CASCADE,
+    round_number INTEGER NOT NULL,
+    match_index INTEGER NOT NULL,
+    player1_id UUID REFERENCES players(id),
+    player2_id UUID REFERENCES players(id),
+    player1_name VARCHAR(50),
+    player2_name VARCHAR(50),
+    winner_id UUID REFERENCES players(id),
+    room_id VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'pending',
+    started_at TIMESTAMP,
+    ended_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tournament_chat (
+    id SERIAL PRIMARY KEY,
+    tournament_id UUID REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id UUID REFERENCES players(id),
+    username VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    is_system BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tournament_records (
+    id SERIAL PRIMARY KEY,
+    tournament_id UUID REFERENCES tournaments(id) ON DELETE CASCADE,
+    player_id UUID REFERENCES players(id),
+    tournament_name VARCHAR(100) NOT NULL,
+    final_position INTEGER,
+    total_matches INTEGER DEFAULT 0,
+    wins INTEGER DEFAULT 0,
+    losses INTEGER DEFAULT 0,
+    elo_bonus INTEGER DEFAULT 0,
+    has_top4_badge BOOLEAN DEFAULT false,
+    bracket_snapshot JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_tournaments_status ON tournaments(status);
+CREATE INDEX idx_tournament_players_tournament ON tournament_players(tournament_id);
+CREATE INDEX idx_tournament_matches_tournament ON tournament_matches(tournament_id);
+CREATE INDEX idx_tournament_chat_tournament ON tournament_chat(tournament_id);
+CREATE INDEX idx_tournament_records_player ON tournament_records(player_id);
+CREATE INDEX idx_tournaments_created_at ON tournaments(created_at DESC);

@@ -578,4 +578,377 @@ func ResetAllPlayersElo() error {
 	return err
 }
 
+type Tournament struct {
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	MaxPlayers         int       `json:"maxPlayers"`
+	MinRank            string    `json:"minRank"`
+	CreatorID          string    `json:"creatorId"`
+	Status             string    `json:"status"`
+	RegistrationDeadline time.Time `json:"registrationDeadline"`
+	StartedAt          time.Time `json:"startedAt"`
+	EndedAt            time.Time `json:"endedAt"`
+	WinnerID           string    `json:"winnerId"`
+	CurrentRound       int       `json:"currentRound"`
+	TotalRounds        int       `json:"totalRounds"`
+	CreatedAt          time.Time `json:"createdAt"`
+}
+
+type TournamentPlayer struct {
+	ID           int       `json:"id"`
+	TournamentID string    `json:"tournamentId"`
+	PlayerID     string    `json:"playerId"`
+	Username     string    `json:"username"`
+	EloRating    int       `json:"eloRating"`
+	CurrentRank  string    `json:"currentRank"`
+	Seed         int       `json:"seed"`
+	FinalPosition int      `json:"finalPosition"`
+	JoinedAt     time.Time `json:"joinedAt"`
+}
+
+type TournamentMatch struct {
+	ID          string    `json:"id"`
+	TournamentID string   `json:"tournamentId"`
+	RoundNumber int       `json:"roundNumber"`
+	MatchIndex  int       `json:"matchIndex"`
+	Player1ID   string    `json:"player1Id"`
+	Player2ID   string    `json:"player2Id"`
+	Player1Name string    `json:"player1Name"`
+	Player2Name string    `json:"player2Name"`
+	WinnerID    string    `json:"winnerId"`
+	RoomID      string    `json:"roomId"`
+	Status      string    `json:"status"`
+	StartedAt   time.Time `json:"startedAt"`
+	EndedAt     time.Time `json:"endedAt"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+type TournamentChatMessage struct {
+	ID         int       `json:"id"`
+	TournamentID string   `json:"tournamentId"`
+	PlayerID   string    `json:"playerId"`
+	Username   string    `json:"username"`
+	Message    string    `json:"message"`
+	IsSystem   bool      `json:"isSystem"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+type TournamentRecord struct {
+	ID              int       `json:"id"`
+	TournamentID    string    `json:"tournamentId"`
+	PlayerID        string    `json:"playerId"`
+	TournamentName  string    `json:"tournamentName"`
+	FinalPosition   int       `json:"finalPosition"`
+	TotalMatches    int       `json:"totalMatches"`
+	Wins            int       `json:"wins"`
+	Losses          int       `json:"losses"`
+	EloBonus        int       `json:"eloBonus"`
+	HasTop4Badge    bool      `json:"hasTop4Badge"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
+func CreateTournament(t *Tournament) error {
+	query := `INSERT INTO tournaments (id, name, max_players, min_rank, creator_id, status, registration_deadline, total_rounds)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := DB.Exec(query, t.ID, t.Name, t.MaxPlayers, t.MinRank, t.CreatorID, t.Status, t.RegistrationDeadline, t.TotalRounds)
+	return err
+}
+
+func GetTournamentByID(tournamentID string) (*Tournament, error) {
+	t := &Tournament{}
+	query := `SELECT id, name, max_players, min_rank, creator_id, status, registration_deadline, 
+	          started_at, ended_at, winner_id, current_round, total_rounds, created_at
+	          FROM tournaments WHERE id = $1`
+	err := DB.QueryRow(query, tournamentID).Scan(
+		&t.ID, &t.Name, &t.MaxPlayers, &t.MinRank, &t.CreatorID, &t.Status,
+		&t.RegistrationDeadline, &t.StartedAt, &t.EndedAt, &t.WinnerID,
+		&t.CurrentRound, &t.TotalRounds, &t.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func GetTournamentsByStatus(status string) ([]*Tournament, error) {
+	query := `SELECT id, name, max_players, min_rank, creator_id, status, registration_deadline,
+	          started_at, ended_at, winner_id, current_round, total_rounds, created_at
+	          FROM tournaments WHERE status = $1 ORDER BY created_at DESC`
+	rows, err := DB.Query(query, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tournaments := make([]*Tournament, 0)
+	for rows.Next() {
+		t := &Tournament{}
+		err := rows.Scan(
+			&t.ID, &t.Name, &t.MaxPlayers, &t.MinRank, &t.CreatorID, &t.Status,
+			&t.RegistrationDeadline, &t.StartedAt, &t.EndedAt, &t.WinnerID,
+			&t.CurrentRound, &t.TotalRounds, &t.CreatedAt,
+		)
+		if err != nil {
+			continue
+		}
+		tournaments = append(tournaments, t)
+	}
+	return tournaments, nil
+}
+
+func GetActiveTournaments() ([]*Tournament, error) {
+	query := `SELECT id, name, max_players, min_rank, creator_id, status, registration_deadline,
+	          started_at, ended_at, winner_id, current_round, total_rounds, created_at
+	          FROM tournaments WHERE status IN ('registering', 'in_progress') ORDER BY created_at DESC`
+	rows, err := DB.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tournaments := make([]*Tournament, 0)
+	for rows.Next() {
+		t := &Tournament{}
+		err := rows.Scan(
+			&t.ID, &t.Name, &t.MaxPlayers, &t.MinRank, &t.CreatorID, &t.Status,
+			&t.RegistrationDeadline, &t.StartedAt, &t.EndedAt, &t.WinnerID,
+			&t.CurrentRound, &t.TotalRounds, &t.CreatedAt,
+		)
+		if err != nil {
+			continue
+		}
+		tournaments = append(tournaments, t)
+	}
+	return tournaments, nil
+}
+
+func UpdateTournamentStatus(tournamentID, status string) error {
+	query := `UPDATE tournaments SET status = $1 WHERE id = $2`
+	_, err := DB.Exec(query, status, tournamentID)
+	return err
+}
+
+func UpdateTournamentRound(tournamentID string, currentRound int) error {
+	query := `UPDATE tournaments SET current_round = $1 WHERE id = $2`
+	_, err := DB.Exec(query, currentRound, tournamentID)
+	return err
+}
+
+func StartTournament(tournamentID string) error {
+	query := `UPDATE tournaments SET status = 'in_progress', started_at = CURRENT_TIMESTAMP, current_round = 1 WHERE id = $1`
+	_, err := DB.Exec(query, tournamentID)
+	return err
+}
+
+func EndTournament(tournamentID, winnerID string) error {
+	query := `UPDATE tournaments SET status = 'finished', ended_at = CURRENT_TIMESTAMP, winner_id = $1 WHERE id = $2`
+	_, err := DB.Exec(query, winnerID, tournamentID)
+	return err
+}
+
+func AddTournamentPlayer(tp *TournamentPlayer) error {
+	query := `INSERT INTO tournament_players (tournament_id, player_id, username, elo_rating, current_rank, seed)
+	          VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := DB.Exec(query, tp.TournamentID, tp.PlayerID, tp.Username, tp.EloRating, tp.CurrentRank, tp.Seed)
+	return err
+}
+
+func GetTournamentPlayers(tournamentID string) ([]*TournamentPlayer, error) {
+	query := `SELECT id, tournament_id, player_id, username, elo_rating, current_rank, seed, final_position, joined_at
+	          FROM tournament_players WHERE tournament_id = $1 ORDER BY seed ASC, joined_at ASC`
+	rows, err := DB.Query(query, tournamentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	players := make([]*TournamentPlayer, 0)
+	for rows.Next() {
+		p := &TournamentPlayer{}
+		err := rows.Scan(&p.ID, &p.TournamentID, &p.PlayerID, &p.Username,
+			&p.EloRating, &p.CurrentRank, &p.Seed, &p.FinalPosition, &p.JoinedAt)
+		if err != nil {
+			continue
+		}
+		players = append(players, p)
+	}
+	return players, nil
+}
+
+func GetTournamentPlayerCount(tournamentID string) (int, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM tournament_players WHERE tournament_id = $1`
+	err := DB.QueryRow(query, tournamentID).Scan(&count)
+	return count, err
+}
+
+func IsPlayerInTournament(tournamentID, playerID string) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM tournament_players WHERE tournament_id = $1 AND player_id = $2)`
+	err := DB.QueryRow(query, tournamentID, playerID).Scan(&exists)
+	return exists, err
+}
+
+func RemoveTournamentPlayer(tournamentID, playerID string) error {
+	query := `DELETE FROM tournament_players WHERE tournament_id = $1 AND player_id = $2`
+	_, err := DB.Exec(query, tournamentID, playerID)
+	return err
+}
+
+func UpdatePlayerSeed(tournamentID, playerID string, seed int) error {
+	query := `UPDATE tournament_players SET seed = $1 WHERE tournament_id = $2 AND player_id = $3`
+	_, err := DB.Exec(query, seed, tournamentID, playerID)
+	return err
+}
+
+func UpdatePlayerFinalPosition(tournamentID, playerID string, position int) error {
+	query := `UPDATE tournament_players SET final_position = $1 WHERE tournament_id = $2 AND player_id = $3`
+	_, err := DB.Exec(query, position, tournamentID, playerID)
+	return err
+}
+
+func CreateTournamentMatch(m *TournamentMatch) error {
+	query := `INSERT INTO tournament_matches (id, tournament_id, round_number, match_index, 
+	          player1_id, player2_id, player1_name, player2_name, status)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := DB.Exec(query, m.ID, m.TournamentID, m.RoundNumber, m.MatchIndex,
+		m.Player1ID, m.Player2ID, m.Player1Name, m.Player2Name, m.Status)
+	return err
+}
+
+func GetTournamentMatches(tournamentID string) ([]*TournamentMatch, error) {
+	query := `SELECT id, tournament_id, round_number, match_index, player1_id, player2_id,
+	          player1_name, player2_name, winner_id, room_id, status, started_at, ended_at, created_at
+	          FROM tournament_matches WHERE tournament_id = $1 ORDER BY round_number ASC, match_index ASC`
+	rows, err := DB.Query(query, tournamentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	matches := make([]*TournamentMatch, 0)
+	for rows.Next() {
+		m := &TournamentMatch{}
+		err := rows.Scan(&m.ID, &m.TournamentID, &m.RoundNumber, &m.MatchIndex,
+			&m.Player1ID, &m.Player2ID, &m.Player1Name, &m.Player2Name,
+			&m.WinnerID, &m.RoomID, &m.Status, &m.StartedAt, &m.EndedAt, &m.CreatedAt)
+		if err != nil {
+			continue
+		}
+		matches = append(matches, m)
+	}
+	return matches, nil
+}
+
+func GetTournamentMatchesByRound(tournamentID string, round int) ([]*TournamentMatch, error) {
+	query := `SELECT id, tournament_id, round_number, match_index, player1_id, player2_id,
+	          player1_name, player2_name, winner_id, room_id, status, started_at, ended_at, created_at
+	          FROM tournament_matches WHERE tournament_id = $1 AND round_number = $2 ORDER BY match_index ASC`
+	rows, err := DB.Query(query, tournamentID, round)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	matches := make([]*TournamentMatch, 0)
+	for rows.Next() {
+		m := &TournamentMatch{}
+		err := rows.Scan(&m.ID, &m.TournamentID, &m.RoundNumber, &m.MatchIndex,
+			&m.Player1ID, &m.Player2ID, &m.Player1Name, &m.Player2Name,
+			&m.WinnerID, &m.RoomID, &m.Status, &m.StartedAt, &m.EndedAt, &m.CreatedAt)
+		if err != nil {
+			continue
+		}
+		matches = append(matches, m)
+	}
+	return matches, nil
+}
+
+func UpdateTournamentMatchRoom(matchID, roomID string) error {
+	query := `UPDATE tournament_matches SET room_id = $1, status = 'in_progress', started_at = CURRENT_TIMESTAMP WHERE id = $2`
+	_, err := DB.Exec(query, roomID, matchID)
+	return err
+}
+
+func UpdateTournamentMatchResult(matchID, winnerID string) error {
+	query := `UPDATE tournament_matches SET winner_id = $1, status = 'finished', ended_at = CURRENT_TIMESTAMP WHERE id = $2`
+	_, err := DB.Exec(query, winnerID, matchID)
+	return err
+}
+
+func GetTournamentMatchByID(matchID string) (*TournamentMatch, error) {
+	m := &TournamentMatch{}
+	query := `SELECT id, tournament_id, round_number, match_index, player1_id, player2_id,
+	          player1_name, player2_name, winner_id, room_id, status, started_at, ended_at, created_at
+	          FROM tournament_matches WHERE id = $1`
+	err := DB.QueryRow(query, matchID).Scan(&m.ID, &m.TournamentID, &m.RoundNumber, &m.MatchIndex,
+		&m.Player1ID, &m.Player2ID, &m.Player1Name, &m.Player2Name,
+		&m.WinnerID, &m.RoomID, &m.Status, &m.StartedAt, &m.EndedAt, &m.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func AddTournamentChat(tournamentID, playerID, username, message string, isSystem bool) error {
+	query := `INSERT INTO tournament_chat (tournament_id, player_id, username, message, is_system)
+	          VALUES ($1, $2, $3, $4, $5)`
+	_, err := DB.Exec(query, tournamentID, playerID, username, message, isSystem)
+	return err
+}
+
+func GetTournamentChat(tournamentID string, limit int) ([]*TournamentChatMessage, error) {
+	query := `SELECT id, tournament_id, player_id, username, message, is_system, created_at
+	          FROM tournament_chat WHERE tournament_id = $1 ORDER BY created_at DESC LIMIT $2`
+	rows, err := DB.Query(query, tournamentID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	messages := make([]*TournamentChatMessage, 0)
+	for rows.Next() {
+		msg := &TournamentChatMessage{}
+		err := rows.Scan(&msg.ID, &msg.TournamentID, &msg.PlayerID, &msg.Username,
+			&msg.Message, &msg.IsSystem, &msg.CreatedAt)
+		if err != nil {
+			continue
+		}
+		messages = append([]*TournamentChatMessage{msg}, messages...)
+	}
+	return messages, nil
+}
+
+func CreateTournamentRecord(tr *TournamentRecord) error {
+	query := `INSERT INTO tournament_records (tournament_id, player_id, tournament_name, final_position, 
+	          total_matches, wins, losses, elo_bonus, has_top4_badge)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	_, err := DB.Exec(query, tr.TournamentID, tr.PlayerID, tr.TournamentName, tr.FinalPosition,
+		tr.TotalMatches, tr.Wins, tr.Losses, tr.EloBonus, tr.HasTop4Badge)
+	return err
+}
+
+func GetPlayerTournamentRecords(playerID string, limit int) ([]*TournamentRecord, error) {
+	query := `SELECT id, tournament_id, player_id, tournament_name, final_position, 
+	          total_matches, wins, losses, elo_bonus, has_top4_badge, created_at
+	          FROM tournament_records WHERE player_id = $1 ORDER BY created_at DESC LIMIT $2`
+	rows, err := DB.Query(query, playerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	records := make([]*TournamentRecord, 0)
+	for rows.Next() {
+		r := &TournamentRecord{}
+		err := rows.Scan(&r.ID, &r.TournamentID, &r.PlayerID, &r.TournamentName, &r.FinalPosition,
+			&r.TotalMatches, &r.Wins, &r.Losses, &r.EloBonus, &r.HasTop4Badge, &r.CreatedAt)
+		if err != nil {
+			continue
+		}
+		records = append(records, r)
+	}
+	return records, nil
+}
+
 var _ = pq.Array

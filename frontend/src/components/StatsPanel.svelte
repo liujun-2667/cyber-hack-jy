@@ -7,8 +7,10 @@
 
   let stats = null
   let recentGames = []
+  let tournamentHistory = []
   let loading = true
   let loadingRecent = true
+  let loadingTournaments = true
 
   $: playerInfo = $gameStore.playerInfo
   $: currentPlayerId = playerId || playerInfo?.playerId
@@ -41,14 +43,30 @@
     }
   }
 
+  async function loadTournamentHistory() {
+    if (!currentPlayerId) return
+    
+    loadingTournaments = true
+    try {
+      const data = await gameStore.fetchPlayerTournaments(currentPlayerId, 5)
+      tournamentHistory = data?.tournaments || []
+    } catch (e) {
+      console.error('Failed to load tournament history:', e)
+    } finally {
+      loadingTournaments = false
+    }
+  }
+
   onMount(() => {
     loadStats()
     loadRecentGames()
+    loadTournamentHistory()
   })
 
   $: if (currentPlayerId) {
     loadStats()
     loadRecentGames()
+    loadTournamentHistory()
   }
 </script>
 
@@ -154,6 +172,54 @@
           </div>
         {:else}
           <div class="no-data-mini">暂无对战记录</div>
+        {/if}
+      </div>
+
+      <div class="stats-divider"></div>
+      
+      <div class="tournament-history-section">
+        <h4>🏆 锦标赛记录</h4>
+        {#if loadingTournaments}
+          <div class="loading-mini">加载中...</div>
+        {:else if tournamentHistory.length > 0}
+          <div class="tournament-list">
+            {#each tournamentHistory as tourney, i}
+              <div class="tournament-item">
+                <div class="tournament-info">
+                  <span class="tournament-name">{tourney.tournamentName || tourney.name}</span>
+                  <span class="tournament-place">
+                    {#if tourney.finalRank === 1}
+                      🥇 冠军
+                    {:else if tourney.finalRank === 2}
+                      🥈 亚军
+                    {:else if tourney.finalRank <= 4}
+                      🏅 前四
+                    {:else}
+                      第{tourney.finalRank}名
+                    {/if}
+                  </span>
+                </div>
+                <div class="tournament-meta">
+                  <span class="tournament-size">{tourney.maxPlayers || tourney.playerCount}人赛</span>
+                  <span class="tournament-date">
+                    {tourney.endedAt ? new Date(tourney.endedAt).toLocaleDateString() : '进行中'}
+                  </span>
+                </div>
+                {#if tourney.eloReward}
+                  <div class="tournament-reward">
+                    ELO奖励: <span class="reward-positive">+{tourney.eloReward}</span>
+                  </div>
+                {/if}
+                {#if tourney.topFour}
+                  <div class="top-four-badge">
+                    ✨ 锦标赛前四
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="no-data-mini">暂无锦标赛记录</div>
         {/if}
       </div>
     </div>
@@ -395,5 +461,97 @@
     text-align: center;
     color: var(--text-secondary);
     font-size: 12px;
+  }
+
+  .tournament-history-section h4 {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: #FFD700;
+    letter-spacing: 1px;
+  }
+
+  .tournament-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tournament-item {
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 215, 0, 0.15);
+    transition: all 0.2s;
+  }
+
+  .tournament-item:hover {
+    background: rgba(255, 215, 0, 0.05);
+    border-color: rgba(255, 215, 0, 0.3);
+  }
+
+  .tournament-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .tournament-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 60%;
+  }
+
+  .tournament-place {
+    font-size: 12px;
+    font-weight: bold;
+    color: #FFD700;
+    flex-shrink: 0;
+  }
+
+  .tournament-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+
+  .tournament-size {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: rgba(0, 240, 255, 0.1);
+    border-radius: 4px;
+  }
+
+  .tournament-date {
+    font-size: 10px;
+    opacity: 0.7;
+  }
+
+  .tournament-reward {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .reward-positive {
+    color: var(--neon-green);
+    font-weight: bold;
+  }
+
+  .top-four-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 8px;
+    background: rgba(255, 215, 0, 0.15);
+    color: #FFD700;
+    font-size: 10px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 215, 0, 0.3);
   }
 </style>
