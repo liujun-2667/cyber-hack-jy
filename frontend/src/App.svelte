@@ -7,7 +7,7 @@
   let currentView = 'lobby'
   let username = ''
 
-  $: if ($gameStore.gameState && $gameStore.gameState.phase) {
+  $: if ($gameStore.inGame) {
     currentView = 'game'
   }
 

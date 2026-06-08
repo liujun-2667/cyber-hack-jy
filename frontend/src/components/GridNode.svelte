@@ -34,6 +34,15 @@
     }
   }
 
+  function handleKeydown(e) {
+    if (targetMode && isAlive && !isUnknown) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onClick()
+      }
+    }
+  }
+
   function getTypeIcon(type) {
     const icons = {
       core: '◈',
@@ -52,7 +61,11 @@
   class:dead={!isAlive}
   class:targetable={targetMode && isAlive && !isUnknown}
   transform="translate({x}, {y})"
+  role={targetMode && isAlive && !isUnknown ? 'button' : undefined}
+  tabindex={targetMode && isAlive && !isUnknown ? 0 : -1}
+  aria-label={targetMode && isAlive && !isUnknown ? `选择节点 ${node?.name || '未知'}` : undefined}
   on:click={handleClick}
+  on:keydown={handleKeydown}
   style="pointer-events: all; cursor: {targetMode && isAlive && !isUnknown ? 'pointer' : 'default'}"
 >
   <defs>

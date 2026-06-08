@@ -12,6 +12,14 @@
     onCardSelect(card)
   }
 
+  function handleKeydown(event, card) {
+    if (disabled) return
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onCardSelect(card)
+    }
+  }
+
   $: playedCardIds = playedCards.map(pc => pc.card?.id)
 </script>
 
@@ -26,7 +34,11 @@
         class="card-wrapper"
         class:selected={selectedCard?.id === card.id}
         class:played={playedCardIds.includes(card.id)}
+        role="button"
+        tabindex="0"
+        aria-label={`选择卡牌 ${card.name}`}
         on:click={() => handleCardClick(card)}
+        on:keydown={(e) => handleKeydown(e, card)}
       >
         <GameCard card={card} />
       </div>
@@ -87,6 +99,18 @@
   }
 
   .card-wrapper:hover {
+    transform: translateY(-10px);
+  }
+
+  .card-wrapper:focus {
+    outline: 2px solid var(--neon-cyan);
+    outline-offset: 2px;
+    transform: translateY(-10px);
+  }
+
+  .card-wrapper:focus-visible {
+    outline: 2px solid var(--neon-cyan);
+    outline-offset: 2px;
     transform: translateY(-10px);
   }
 

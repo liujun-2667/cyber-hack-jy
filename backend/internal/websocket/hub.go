@@ -120,13 +120,14 @@ func (h *Hub) createMatchedRoom(match *matchmaking.MatchResult) {
 
 	for _, player := range match.Players {
 		r.AddPlayer(player.PlayerID, player.Username)
-		h.sendToClient(player.PlayerID, "matched", map[string]interface{}{
-			"roomId":  r.ID,
-			"players": r.GetPlayerList(),
-		})
 	}
 
-	r.StartGame(match.Players[0].PlayerID)
+	r.Broadcast("matched", map[string]interface{}{
+		"roomId":  r.ID,
+		"players": r.GetPlayerList(),
+	})
+
+	r.ForceStartGame()
 }
 
 func (h *Hub) handleCreateRoom(client *Client, msg *Message) {

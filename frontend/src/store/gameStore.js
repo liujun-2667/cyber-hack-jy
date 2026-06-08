@@ -7,7 +7,8 @@ function createGameStore() {
     roomId: null,
     error: null,
     gameLog: [],
-    players: []
+    players: [],
+    inGame: false
   })
 
   let ws = null
@@ -75,7 +76,8 @@ function createGameStore() {
       roomId: null,
       error: null,
       gameLog: [],
-      players: []
+      players: [],
+      inGame: false
     })
   }
 
@@ -84,7 +86,7 @@ function createGameStore() {
     
     switch (message.type) {
       case 'game_state':
-        update(state => ({ ...state, gameState: message.payload }))
+        update(state => ({ ...state, gameState: message.payload, inGame: true }))
         break
       case 'room_created':
       case 'room_joined':

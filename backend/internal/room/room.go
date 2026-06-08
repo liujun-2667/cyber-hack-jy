@@ -133,6 +133,21 @@ func (r *Room) StartGame(playerID string) {
 		return
 	}
 
+	r.startGameInternal()
+}
+
+func (r *Room) ForceStartGame() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.gameStarted {
+		return
+	}
+
+	r.startGameInternal()
+}
+
+func (r *Room) startGameInternal() {
 	r.gameStarted = true
 	r.Game.StartGame()
 
