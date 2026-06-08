@@ -6,6 +6,7 @@
   import GameLog from './GameLog.svelte'
   import CardDetail from './CardDetail.svelte'
   import GameInfo from './GameInfo.svelte'
+  import { getRankInfo, formatElo, getRankProgress } from '../utils/rank.js'
 
   export let onBack
   export let onWatchReplay = null
@@ -15,13 +16,31 @@
   let selectedTarget = null
   let timer = 20
   let timerInterval = null
+  let showRankAnimation = false
+  let animationPhase = 'result'
 
   $: gameState = $gameStore.gameState
   $: phase = gameState?.phase
   $: currentTurn = gameState?.currentTurn
+  $: rankResults = $gameStore.rankResults
+  $: myPlayerId = $myPlayer?.id
+  $: myRankResult = rankResults?.[myPlayerId]
+  $: isWin = myRankResult?.isWinner
+  $: rankChange = myRankResult?.rankChange
+  $: newRankInfo = myRankResult ? getRankInfo(myRankResult.newRank) : null
+  $: oldRankInfo = myRankResult ? getRankInfo(myRankResult.oldRank) : null
 
   $: if (phase === 'programming' && timer > 0) {
     startTimer()
+  }
+
+  $: if (phase === 'gameover' && rankResults) {
+    setTimeout(() => {
+      showRankAnimation = true
+      setTimeout(() => {
+        animationPhase = 'rank'
+      }, 800)
+    }, 500)
   }
 
   function startTimer() {
@@ -193,11 +212,77 @@
 
   {#if phase === 'gameover'}
     <div class="game-over-overlay">
-      <div class="game-over-content">
-        <h2 class="neon-text-green">游戏结束</h2>
-        <p class="winner-info">
-          胜者: {gameState?.winnerId === $myPlayer?.id ? '你' : '对手'}
-        </p>
+      {#if showRankAnimation && rankChange === 'promote'}
+        <div class="particles gold">
+          {#each Array.from({ length: 30 }) as _, i}
+            <span class="particle" style="--delay: {i * 0.05}s;"></span>
+          {/each}
+        </div>
+      {:else if showRankAnimation && rankChange === 'demote'}
+        <div class="particles gray">
+          {#each Array.from({ length: 20 }) as _, i}
+            <span class="shard" style="--delay: {i * 0.06}s;"></span>
+          {/each}
+        </div>
+      {/if}
+
+      <div class="game-over-content" class:show={showRankAnimation}>
+        {#if rankChange === 'promote'}
+          <div class="rank-change promote">
+            <div class="rank-icon-large" style="color: {newRankInfo?.color};">
+              {newRankInfo?.icon}
+            </div>
+            <div class="rank-change-text">
+              <span class="rank-change-title">🎉 晋级成功!</span>
+              <span class="rank-name" style="color: {newRankInfo?.color};">
+                {newRankInfo?.name}
+              </span>
+            </div>
+          </div>
+        {:else if rankChange === 'demote'}
+          <div class="rank-change demote">
+            <div class="rank-icon-large shrunk" style="color: {newRankInfo?.color};">
+              {newRankInfo?.icon}
+            </div>
+            <div class="rank-change-text">
+              <span class="rank-change-title">💔 降级</span>
+              <span class="rank-name" style="color: {newRankInfo?.color};">
+                {newRankInfo?.name}
+              </span>
+            </div>
+          </div>
+        {/if}
+
+        <h2 class={isWin ? 'neon-text-green' : 'neon-text-red'}>
+          {isWin ? '胜利!' : '失败'}
+        </h2>
+
+        {#if myRankResult}
+          <div class="elo-change-section">
+            <div class="elo-row">
+              <span class="elo-label">积分变动</span>
+              <span class="elo-change" class:positive={myRankResult.eloChange > 0}>
+                {myRankResult.eloChange > 0 ? '+' : ''}{myRankResult.eloChange}
+              </span>
+            </div>
+            <div class="elo-row">
+              <span class="elo-label">当前积分</span>
+              <span class="elo-current">{formatElo(myRankResult.newElo)}</span>
+            </div>
+            <div class="elo-progress">
+              <div class="elo-bar">
+                <div 
+                  class="elo-bar-fill"
+                  style="width: {getRankProgress(myRankResult.newElo, myRankResult.newRank)}%; background: {newRankInfo?.color};"
+                ></div>
+              </div>
+              <span class="elo-rank-name" style="color: {newRankInfo?.color};">
+                {newRankInfo?.name}
+              </span>
+            </div>
+          </div>
+        {/if}
+
         <div class="game-over-buttons">
           {#if $gameStore.lastReplayId}
             <button class="btn-neon-pink" on:click={handleWatchReplay}>
@@ -426,23 +511,245 @@
     align-items: center;
     justify-content: center;
     z-index: 100;
+    overflow: hidden;
+  }
+
+  .particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .particle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    background: #FFD700;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #FFD700, 0 0 20px #FFA500;
+    animation: particleBurst 2s ease-out forwards;
+    animation-delay: var(--delay);
+  }
+
+  @keyframes particleBurst {
+    0% {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(
+        calc(-50% + calc(cos(var(--angle, 0deg)) * 300px)),
+        calc(-50% + calc(sin(var(--angle, 0deg)) * 300px) - 200px)
+      );
+      opacity: 0;
+    }
+  }
+
+  .particles.gold .particle {
+    background: #FFD700;
+    box-shadow: 0 0 10px #FFD700, 0 0 20px #FFA500;
+  }
+
+  .particles.gray .shard {
+    background: #888;
+    box-shadow: 0 0 6px #666;
+  }
+
+  .shard {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    background: #888;
+    clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+    animation: shardFall 2.5s ease-in forwards;
+    animation-delay: var(--delay);
+    opacity: 0;
+  }
+
+  @keyframes shardFall {
+    0% {
+      transform: translate(-50%, -50%) rotate(0deg) scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(
+        calc(-50% + calc(cos(var(--angle, 0deg)) * 200px)),
+        calc(-50% + 300px)
+      ) rotate(360deg) scale(0.5);
+      opacity: 0;
+    }
   }
 
   .game-over-content {
     text-align: center;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
+    position: relative;
+    z-index: 1;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .game-over-content.show {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .rank-change {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .rank-change.promote .rank-icon-large {
+    animation: rankUp 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .rank-change.demote .rank-icon-large {
+    animation: rankDown 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .rank-icon-large {
+    font-size: 80px;
+    line-height: 1;
+    filter: drop-shadow(0 0 20px currentColor);
+  }
+
+  .rank-icon-large.shrunk {
+    font-size: 60px;
+  }
+
+  @keyframes rankUp {
+    0% {
+      transform: scale(0.3);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(1.3);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes rankDown {
+    0% {
+      transform: scale(1.5);
+      opacity: 0;
+    }
+    50% {
+      transform: scale(0.8);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .rank-change-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .rank-change-title {
+    font-size: 24px;
+    color: var(--text-primary);
+    font-weight: bold;
+  }
+
+  .rank-name {
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 2px;
   }
 
   .game-over-content h2 {
     font-size: 48px;
     letter-spacing: 4px;
+    margin: 0;
   }
 
   .winner-info {
     font-size: 24px;
     color: var(--text-primary);
+  }
+
+  .elo-change-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px 24px;
+    min-width: 280px;
+  }
+
+  .elo-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .elo-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .elo-change {
+    font-size: 20px;
+    font-weight: bold;
+    color: var(--neon-red);
+  }
+
+  .elo-change.positive {
+    color: var(--neon-green);
+  }
+
+  .elo-current {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--neon-cyan);
+  }
+
+  .elo-progress {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .elo-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .elo-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 1s ease;
+    box-shadow: 0 0 8px currentColor;
+  }
+
+  .elo-rank-name {
+    text-align: right;
+    font-size: 12px;
+    font-weight: bold;
   }
 
   .game-over-buttons {

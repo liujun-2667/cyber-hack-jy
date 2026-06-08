@@ -14,7 +14,12 @@ function createGameStore() {
     currentReplay: null,
     replayTurn: 0,
     replayPlaying: false,
-    replaySpeed: 1
+    replaySpeed: 1,
+    playerInfo: null,
+    matchmakingStatus: null,
+    isMatching: false,
+    rankResults: null,
+    seasonInfo: null
   })
 
   let ws = null
@@ -83,7 +88,18 @@ function createGameStore() {
       error: null,
       gameLog: [],
       players: [],
-      inGame: false
+      inGame: false,
+      lastReplayId: null,
+      replayMode: false,
+      currentReplay: null,
+      replayTurn: 0,
+      replayPlaying: false,
+      replaySpeed: 1,
+      playerInfo: null,
+      matchmakingStatus: null,
+      isMatching: false,
+      rankResults: null,
+      seasonInfo: null
     })
   }
 
@@ -100,7 +116,9 @@ function createGameStore() {
         update(state => ({ 
           ...state, 
           roomId: message.payload.roomId,
-          players: message.payload.players || []
+          players: message.payload.players || [],
+          isMatching: false,
+          matchmakingStatus: null
         }))
         break
       case 'player_joined':
@@ -138,6 +156,7 @@ function createGameStore() {
         update(state => ({
           ...state,
           lastReplayId: message.payload.replayId || null,
+          rankResults: message.payload.rankResults || null,
           gameState: state.gameState ? { 
             ...state.gameState, 
             phase: 'gameover', 
@@ -148,6 +167,47 @@ function createGameStore() {
       case 'game_started':
         break
       case 'matchmaking_queued':
+        update(state => ({
+          ...state,
+          isMatching: true,
+          matchmakingStatus: {
+            position: message.payload.position,
+            eloRating: message.payload.eloRating,
+            estimatedRange: message.payload.estimatedRange,
+            waitTime: 0
+          }
+        }))
+        break
+      case 'matchmaking_status':
+        update(state => ({
+          ...state,
+          matchmakingStatus: {
+            ...state.matchmakingStatus,
+            waitTime: message.payload.waitTime,
+            estimatedRange: message.payload.estimatedRange,
+            currentRange: message.payload.currentRange
+          }
+        }))
+        break
+      case 'matchmaking_cancelled':
+        update(state => ({
+          ...state,
+          isMatching: false,
+          matchmakingStatus: null
+        }))
+        break
+      case 'player_info':
+        update(state => ({
+          ...state,
+          playerInfo: message.payload,
+          seasonInfo: message.payload.season || null
+        }))
+        break
+      case 'season_reset':
+        update(state => ({
+          ...state,
+          seasonResetNotice: message.payload
+        }))
         break
       case 'error':
         update(state => ({ ...state, error: message.payload.message }))
@@ -176,7 +236,12 @@ function createGameStore() {
   }
 
   function cancelMatch() {
-    disconnect()
+    send('cancel_match')
+    update(state => ({
+      ...state,
+      isMatching: false,
+      matchmakingStatus: null
+    }))
   }
 
   function createRoom() {
@@ -243,6 +308,49 @@ function createGameStore() {
     }
   }
 
+  async function fetchLeaderboard(limit = 20, playerId = null) {
+    try {
+      let url = `${getApiBaseUrl()}/api/leaderboard?limit=${limit}`
+      if (playerId) {
+        url += `&playerId=${playerId}`
+      }
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error('Failed to fetch leaderboard')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error)
+      return null
+    }
+  }
+
+  async function fetchPlayerStats(playerId) {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/player/stats?playerId=${playerId}`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch player stats')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching player stats:', error)
+      return null
+    }
+  }
+
+  async function fetchSeasonInfo() {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/season`)
+      if (!response.ok) {
+        throw new Error('Failed to fetch season info')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching season info:', error)
+      return null
+    }
+  }
+
   function setReplayTurn(turn) {
     update(state => ({
       ...state,
@@ -289,10 +397,14 @@ function createGameStore() {
     requestGameState,
     sendChat,
     fetchReplay,
+    fetchLeaderboard,
+    fetchPlayerStats,
+    fetchSeasonInfo,
     setReplayTurn,
     setReplayPlaying,
     setReplaySpeed,
-    exitReplay
+    exitReplay,
+    getApiBaseUrl
   }
 }
 

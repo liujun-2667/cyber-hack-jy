@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
-	"cyberhack/internal/room"
+	"cyberhack/internal/database"
 	"cyberhack/internal/matchmaking"
+	"cyberhack/internal/room"
+	"cyberhack/internal/season"
 )
 
 type Hub struct {
@@ -16,6 +19,8 @@ type Hub struct {
 	Register   chan *Client
 	Unregister chan *Client
 	mu         sync.RWMutex
+	ticker     *time.Ticker
+	stopChan   chan struct{}
 }
 
 func NewHub() *Hub {
@@ -25,10 +30,20 @@ func NewHub() *Hub {
 		matchmaker: matchmaking.NewMatchmaker(),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
+		stopChan:   make(chan struct{}),
 	}
 }
 
 func (h *Hub) Run() {
+	h.matchmaker.SetMatchCallback(h.onMatchFound)
+	h.matchmaker.Start()
+
+	h.ticker = time.NewTicker(1 * time.Second)
+	go h.tick()
+
+	season.GetManager().SetBroadcastFunc(h.broadcastToAll)
+	season.GetManager().Start()
+
 	for {
 		select {
 		case client := <-h.Register:
@@ -36,6 +51,8 @@ func (h *Hub) Run() {
 			h.clients[client.ID] = client
 			h.mu.Unlock()
 			log.Printf("Client registered: %s (%s)", client.ID, client.Username)
+
+			go h.sendPlayerInfo(client)
 
 		case client := <-h.Unregister:
 			h.mu.Lock()
@@ -46,14 +63,96 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 			log.Printf("Client unregistered: %s", client.ID)
+
+		case <-h.stopChan:
+			return
 		}
 	}
+}
+
+func (h *Hub) Stop() {
+	if h.ticker != nil {
+		h.ticker.Stop()
+	}
+	h.matchmaker.Stop()
+	season.GetManager().Stop()
+	close(h.stopChan)
+}
+
+func (h *Hub) tick() {
+	for range h.ticker.C {
+		h.updateMatchmakingStatus()
+	}
+}
+
+func (h *Hub) updateMatchmakingStatus() {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for _, client := range h.clients {
+		info := h.matchmaker.GetMatchRangeInfo(client.ID, "quick", 2)
+		if info != nil {
+			client.SendMessage("matchmaking_status", map[string]interface{}{
+				"waitTime":       info.WaitTime,
+				"estimatedRange": info.EstimatedRange,
+				"currentRange":   info.CurrentRange,
+			})
+		}
+	}
+}
+
+func (h *Hub) onMatchFound(queueKey string, result *matchmaking.MatchResult) {
+	h.createMatchedRoom(result)
+}
+
+func (h *Hub) sendPlayerInfo(client *Client) {
+	player, err := database.GetPlayerByID(client.ID)
+	if err != nil {
+		newPlayer := &database.Player{
+			ID:                client.ID,
+			Username:          client.Username,
+			EloRating:         1200,
+			CurrentRank:       "bronze",
+			BestRank:          "bronze",
+			RankProtectionGames: 0,
+		}
+		database.CreatePlayer(newPlayer)
+		player = newPlayer
+	}
+
+	seasonInfo := season.GetManager().GetCurrentSeason()
+	seasonData := map[string]interface{}{}
+	if seasonInfo != nil {
+		seasonData = map[string]interface{}{
+			"id":          seasonInfo.ID,
+			"name":        seasonInfo.Name,
+			"startDate":   seasonInfo.StartDate,
+			"endDate":     seasonInfo.EndDate,
+			"daysRemaining": int(time.Until(seasonInfo.EndDate).Hours() / 24),
+		}
+	}
+
+	client.SendMessage("player_info", map[string]interface{}{
+		"playerId":          player.ID,
+		"username":          player.Username,
+		"eloRating":         player.EloRating,
+		"currentRank":       player.CurrentRank,
+		"bestRank":          player.BestRank,
+		"wins":              player.Wins,
+		"losses":            player.Losses,
+		"currentStreak":     player.CurrentStreak,
+		"bestStreak":        player.BestStreak,
+		"rankProtectionGames": player.RankProtectionGames,
+		"season":            seasonData,
+	})
 }
 
 func (h *Hub) handleMessage(client *Client, msg *Message) {
 	switch msg.Type {
 	case "quick_match":
 		h.handleQuickMatch(client)
+	case "cancel_match":
+		h.handleCancelMatch(client)
 	case "create_room":
 		h.handleCreateRoom(client, msg)
 	case "join_room":
@@ -72,6 +171,8 @@ func (h *Hub) handleMessage(client *Client, msg *Message) {
 		h.handleChat(client, msg)
 	case "game_state":
 		h.handleGameStateRequest(client)
+	case "get_player_info":
+		h.sendPlayerInfo(client)
 	}
 }
 
@@ -86,13 +187,29 @@ func (h *Hub) sendToClient(playerID, msgType string, payload interface{}) {
 	client.SendMessage(msgType, payload)
 }
 
+func (h *Hub) broadcastToAll(msgType string, payload interface{}) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for _, client := range h.clients {
+		client.SendMessage(msgType, payload)
+	}
+}
+
 func (h *Hub) handleQuickMatch(client *Client) {
+	player, err := database.GetPlayerByID(client.ID)
+	eloRating := 1200
+	if err == nil {
+		eloRating = player.EloRating
+	}
+
 	matchRequest := &matchmaking.MatchRequest{
 		PlayerID:   client.ID,
 		Username:   client.Username,
 		Client:     client,
 		GameMode:   "quick",
 		MaxPlayers: 2,
+		EloRating:  eloRating,
 	}
 
 	match, err := h.matchmaker.AddToQueue(matchRequest)
@@ -105,9 +222,19 @@ func (h *Hub) handleQuickMatch(client *Client) {
 		h.createMatchedRoom(match)
 	} else {
 		client.SendMessage("matchmaking_queued", map[string]interface{}{
-			"position": 1,
+			"position":       1,
+			"eloRating":      eloRating,
+			"estimatedRange": "±200",
+			"waitTime":       0,
 		})
 	}
+}
+
+func (h *Hub) handleCancelMatch(client *Client) {
+	h.matchmaker.RemoveFromQueue(client.ID)
+	client.SendMessage("matchmaking_cancelled", map[string]string{
+		"message": "已取消匹配",
+	})
 }
 
 func (h *Hub) createMatchedRoom(match *matchmaking.MatchResult) {
