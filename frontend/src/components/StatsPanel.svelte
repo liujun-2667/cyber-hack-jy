@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { gameStore } from '../store/gameStore.js'
   import { getWinRate, getCardName, formatElo, getRankInfo } from '../utils/rank.js'
+  import TournamentBracket from './TournamentBracket.svelte'
 
   export let playerId = null
 
@@ -11,6 +12,9 @@
   let loading = true
   let loadingRecent = true
   let loadingTournaments = true
+  let expandedTournamentId = null
+  let expandedBracket = null
+  let loadingBracket = false
 
   $: playerInfo = $gameStore.playerInfo
   $: currentPlayerId = playerId || playerInfo?.playerId
@@ -54,6 +58,28 @@
       console.error('Failed to load tournament history:', e)
     } finally {
       loadingTournaments = false
+    }
+  }
+
+  async function toggleTournamentBracket(tourney) {
+    const tournamentId = tourney.tournamentId || tourney.id
+    if (expandedTournamentId === tournamentId) {
+      expandedTournamentId = null
+      expandedBracket = null
+      return
+    }
+
+    expandedTournamentId = tournamentId
+    expandedBracket = null
+    loadingBracket = true
+    try {
+      const data = await gameStore.fetchTournamentBracket(tournamentId)
+      expandedBracket = data?.matches || []
+    } catch (e) {
+      console.error('Failed to load tournament bracket:', e)
+      expandedBracket = []
+    } finally {
+      loadingBracket = false
     }
   }
 
@@ -184,20 +210,28 @@
         {:else if tournamentHistory.length > 0}
           <div class="tournament-list">
             {#each tournamentHistory as tourney, i}
-              <div class="tournament-item">
-                <div class="tournament-info">
-                  <span class="tournament-name">{tourney.tournamentName || tourney.name}</span>
-                  <span class="tournament-place">
-                    {#if tourney.finalRank === 1}
-                      🥇 冠军
-                    {:else if tourney.finalRank === 2}
-                      🥈 亚军
-                    {:else if tourney.finalRank <= 4}
-                      🏅 前四
-                    {:else}
-                      第{tourney.finalRank}名
-                    {/if}
-                  </span>
+              {@const tId = tourney.tournamentId || tourney.id}
+              <div 
+                class="tournament-item" 
+                class:expanded={expandedTournamentId === tId}
+                on:click={() => toggleTournamentBracket(tourney)}
+              >
+                <div class="tournament-header">
+                  <div class="tournament-info">
+                    <span class="tournament-name">{tourney.tournamentName || tourney.name}</span>
+                    <span class="tournament-place">
+                      {#if tourney.finalRank === 1}
+                        🥇 冠军
+                      {:else if tourney.finalRank === 2}
+                        🥈 亚军
+                      {:else if tourney.finalRank <= 4}
+                        🏅 前四
+                      {:else}
+                        第{tourney.finalRank}名
+                      {/if}
+                    </span>
+                  </div>
+                  <span class="expand-arrow">{expandedTournamentId === tId ? '▲' : '▼'}</span>
                 </div>
                 <div class="tournament-meta">
                   <span class="tournament-size">{tourney.maxPlayers || tourney.playerCount}人赛</span>
@@ -213,6 +247,23 @@
                 {#if tourney.topFour}
                   <div class="top-four-badge">
                     ✨ 锦标赛前四
+                  </div>
+                {/if}
+                {#if expandedTournamentId === tId}
+                  <div class="bracket-expansion" on:click|stopPropagation>
+                    {#if loadingBracket}
+                      <div class="loading-mini">加载对阵表...</div>
+                    {:else if expandedBracket && expandedBracket.length > 0}
+                      <div class="history-bracket-wrapper">
+                        <TournamentBracket 
+                          matches={expandedBracket} 
+                          currentRound={tourney.totalRounds || 99}
+                          compact={true}
+                        />
+                      </div>
+                    {:else}
+                      <div class="no-data-mini">暂无对阵数据</div>
+                    {/if}
                   </div>
                 {/if}
               </div>
@@ -482,6 +533,7 @@
     border-radius: 6px;
     border: 1px solid rgba(255, 215, 0, 0.15);
     transition: all 0.2s;
+    cursor: pointer;
   }
 
   .tournament-item:hover {
@@ -489,11 +541,49 @@
     border-color: rgba(255, 215, 0, 0.3);
   }
 
+  .tournament-item.expanded {
+    border-color: rgba(255, 215, 0, 0.5);
+    background: rgba(255, 215, 0, 0.06);
+  }
+
+  .tournament-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .expand-arrow {
+    font-size: 10px;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+
+  .tournament-item.expanded .expand-arrow {
+    color: #FFD700;
+  }
+
+  .bracket-expansion {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 215, 0, 0.2);
+    cursor: default;
+  }
+
+  .history-bracket-wrapper {
+    max-height: 400px;
+    overflow: auto;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    padding: 12px;
+  }
+
   .tournament-info {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 6px;
+    flex: 1;
   }
 
   .tournament-name {

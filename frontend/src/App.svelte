@@ -9,6 +9,7 @@
   let currentView = 'lobby'
   let username = ''
 
+  $: toasts = $gameStore.toasts || []
   $: watchingTournament = $gameStore.watchingTournament
 
   $: if ($gameStore.inGame && !$gameStore.replayMode) {
@@ -36,6 +37,16 @@
       gameStore.unwatchTournament(watchingTournament)
     }
   }
+
+  function getToastClass(type) {
+    const classMap = {
+      info: 'toast-info',
+      success: 'toast-success',
+      warning: 'toast-warning',
+      error: 'toast-error'
+    }
+    return classMap[type] || 'toast-info'
+  }
 </script>
 
 <div class="app-container">
@@ -52,6 +63,14 @@
   {#if watchingTournament}
     <TournamentWatch onClose={handleCloseTournamentWatch} />
   {/if}
+
+  <div class="toast-container">
+    {#each toasts as toast (toast.id)}
+      <div class="toast-item {getToastClass(toast.type)}" on:click={() => gameStore.dismissToast(toast.id)}>
+        {toast.message}
+      </div>
+    {/each}
+  </div>
 </div>
 
 <style>
@@ -79,5 +98,64 @@
   @keyframes gridMove {
     0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
     100% { transform: perspective(500px) rotateX(60deg) translateY(50px); }
+  }
+
+  .toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .toast-item {
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    pointer-events: auto;
+    animation: toastIn 0.3s ease-out;
+    max-width: 360px;
+    border: 1px solid var(--border-color);
+  }
+
+  @keyframes toastIn {
+    from {
+      opacity: 0;
+      transform: translateX(100px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .toast-info {
+    background: rgba(0, 240, 255, 0.15);
+    color: var(--neon-cyan);
+    border-color: rgba(0, 240, 255, 0.4);
+  }
+
+  .toast-success {
+    background: rgba(0, 255, 100, 0.15);
+    color: #00ff64;
+    border-color: rgba(0, 255, 100, 0.4);
+  }
+
+  .toast-warning {
+    background: rgba(255, 215, 0, 0.15);
+    color: #FFD700;
+    border-color: rgba(255, 215, 0, 0.4);
+  }
+
+  .toast-error {
+    background: rgba(255, 51, 102, 0.15);
+    color: var(--neon-pink);
+    border-color: rgba(255, 51, 102, 0.4);
   }
 </style>

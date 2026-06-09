@@ -3,13 +3,14 @@
 
   export let matches = []
   export let currentRound = 0
+  export let compact = false
 
   $: roundsArray = buildRoundsData(matches)
 
   function buildRoundsData(matches) {
     const grouped = {}
     matches.forEach(match => {
-      const round = match.round || 1
+      const round = match.roundNumber || match.round || 1
       if (!grouped[round]) {
         grouped[round] = []
       }
@@ -43,6 +44,7 @@
     const p1 = getPlayerInfo(match, 'p1')
     const p2 = getPlayerInfo(match, 'p2')
     const isHighlighted = match.status === 'in_progress'
+    const progressInfo = getProgressInfo(match, status)
     return {
       ...match,
       statusClass: status,
@@ -50,27 +52,52 @@
       p2,
       isHighlighted,
       showInProgressBadge: status === 'in_progress',
-      showByeBadge: status === 'bye'
+      showByeBadge: status === 'bye',
+      progressInfo
     }
   }
 
+  function getProgressInfo(match, status) {
+    if (status === 'completed' || status === 'bye') {
+      const winnerId = match.winnerId || match.winner_id
+      const p1Id = match.player1Id || match.player1_id
+      if (winnerId && p1Id) {
+        return { type: 'score', text: winnerId === p1Id ? '1 - 0' : '0 - 1' }
+      }
+      return { type: 'finished', text: '已结束' }
+    }
+    if (status === 'in_progress') {
+      const currentTurn = match.currentTurn
+      const maxTurns = match.maxTurns || 30
+      if (currentTurn) {
+        return { type: 'progress', text: `第${currentTurn}/${maxTurns}回合`, current: currentTurn, max: maxTurns }
+      }
+      return { type: 'progress', text: '进行中' }
+    }
+    if (status === 'ready') {
+      return { type: 'waiting', text: '等待中' }
+    }
+    return { type: 'pending', text: '待定' }
+  }
+
   function getMatchStatus(match) {
-    if (match.status === 'completed') return 'completed'
+    if (match.status === 'completed' || match.status === 'finished') return 'completed'
     if (match.status === 'in_progress') return 'in_progress'
-    if (match.status === 'pending' && match.player1_id && match.player2_id) return 'ready'
+    if (match.status === 'pending' && (match.player1_id || match.player1Id) && (match.player2_id || match.player2Id)) return 'ready'
     if (match.status === 'bye' || match.isBye) return 'bye'
     return 'pending'
   }
 
   function getPlayerInfo(match, side) {
-    const playerId = side === 'p1' ? match.player1_id : match.player2_id
-    const username = side === 'p1' ? match.player1_username : match.player2_username
-    const rank = side === 'p1' ? match.player1_rank : match.player2_rank
-    const seed = side === 'p1' ? match.player1_seed : match.player2_seed
+    const playerId = side === 'p1' ? (match.player1Id || match.player1_id) : (match.player2Id || match.player2_id)
+    const username = side === 'p1' ? (match.player1Name || match.player1_name || match.player1Username) : (match.player2Name || match.player2_name || match.player2Username)
+    const rank = side === 'p1' ? match.player1Rank : match.player2Rank
+    const seed = side === 'p1' ? match.player1Seed : match.player2Seed
     
-    const isWinner = match.winner_id && match.winner_id === playerId
-    const isLoser = match.status === 'completed' && match.winner_id && match.winner_id !== playerId
-    const isBye = match.isBye && match.winner_id === playerId
+    const winnerId = match.winnerId || match.winner_id
+    const isWinner = winnerId && winnerId === playerId
+    const isLoser = (match.status === 'completed' || match.status === 'finished') && winnerId && winnerId !== playerId
+    const isBye = match.isBye && winnerId === playerId
     
     return {
       id: playerId,
@@ -85,7 +112,7 @@
   }
 </script>
 
-<div class="bracket-container">
+<div class="bracket-container" class:compact>
   <div class="bracket-rounds">
     {#each roundsArray as round (round.roundNumber)}
       <div class="bracket-round">
@@ -110,7 +137,16 @@
               </div>
               
               <div class="match-divider">
-                <span class="vs-text">VS</span>
+                {#if match.progressInfo.type === 'progress' && match.progressInfo.current}
+                  <div class="progress-wrapper">
+                    <div class="progress-bar">
+                      <div class="progress-fill" style="width: {Math.min(100, (match.progressInfo.current / match.progressInfo.max) * 100)}%"></div>
+                    </div>
+                    <span class="progress-text">{match.progressInfo.text}</span>
+                  </div>
+                {:else}
+                  <span class="vs-text">{match.progressInfo.text}</span>
+                {/if}
               </div>
               
               <div class="match-player" class:winner={match.p2.isWinner} class:loser={match.p2.isLoser} class:bye={match.p2.isBye}>
@@ -148,10 +184,19 @@
     padding: 10px 0;
   }
 
+  .bracket-container.compact {
+    padding: 4px 0;
+    font-size: 0.85em;
+  }
+
   .bracket-rounds {
     display: flex;
     gap: 20px;
     min-width: fit-content;
+  }
+
+  .bracket-container.compact .bracket-rounds {
+    gap: 12px;
   }
 
   .bracket-round {
@@ -159,6 +204,11 @@
     flex-direction: column;
     gap: 12px;
     min-width: 180px;
+  }
+
+  .bracket-container.compact .bracket-round {
+    min-width: 140px;
+    gap: 8px;
   }
 
   .round-header {
@@ -171,15 +221,27 @@
     border: 1px solid rgba(0, 240, 255, 0.2);
   }
 
+  .bracket-container.compact .round-header {
+    padding: 6px 8px;
+  }
+
   .round-name {
     font-size: 13px;
     font-weight: 600;
     color: var(--neon-cyan);
   }
 
+  .bracket-container.compact .round-name {
+    font-size: 11px;
+  }
+
   .round-count {
     font-size: 11px;
     color: var(--text-secondary);
+  }
+
+  .bracket-container.compact .round-count {
+    font-size: 10px;
   }
 
   .round-matches {
@@ -190,6 +252,10 @@
     justify-content: space-around;
   }
 
+  .bracket-container.compact .round-matches {
+    gap: 6px;
+  }
+
   .match-card {
     position: relative;
     background: var(--bg-tertiary);
@@ -197,6 +263,11 @@
     border-radius: 8px;
     padding: 8px 10px;
     transition: all 0.3s;
+  }
+
+  .bracket-container.compact .match-card {
+    padding: 6px 8px;
+    border-radius: 6px;
   }
 
   .match-card.pending {
@@ -226,6 +297,11 @@
     transition: all 0.3s;
   }
 
+  .bracket-container.compact .match-player {
+    padding: 4px 6px;
+    gap: 4px;
+  }
+
   .match-player.winner {
     background: rgba(0, 255, 100, 0.1);
     color: #00ff64;
@@ -248,8 +324,17 @@
     min-width: 20px;
   }
 
+  .bracket-container.compact .player-seed {
+    font-size: 9px;
+    min-width: 16px;
+  }
+
   .player-rank {
     font-size: 14px;
+  }
+
+  .bracket-container.compact .player-rank {
+    font-size: 12px;
   }
 
   .player-name {
@@ -261,15 +346,57 @@
     white-space: nowrap;
   }
 
+  .bracket-container.compact .player-name {
+    font-size: 11px;
+  }
+
   .player-placeholder {
     font-size: 12px;
     color: var(--text-secondary);
     font-style: italic;
   }
 
+  .bracket-container.compact .player-placeholder {
+    font-size: 10px;
+  }
+
   .match-divider {
     text-align: center;
     padding: 2px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .progress-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .progress-bar {
+    width: 80%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-pink), #FFD700);
+    transition: width 0.5s ease;
+    border-radius: 2px;
+  }
+
+  .progress-text {
+    font-size: 10px;
+    color: #FFD700;
+    font-weight: 600;
+    letter-spacing: 0.5px;
   }
 
   .vs-text {

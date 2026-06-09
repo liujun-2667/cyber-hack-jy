@@ -251,6 +251,86 @@ func (tm *TournamentManager) RegisterPlayer(tournamentID, playerID, username str
 	return nil
 }
 
+func (tm *TournamentManager) RemovePlayer(tournamentID, playerID string) {
+	tm.mu.Lock()
+	state, exists := tm.tournaments[tournamentID]
+	if exists {
+		newPlayers := make([]*database.TournamentPlayer, 0)
+		for _, p := range state.Players {
+			if p.PlayerID != playerID {
+				newPlayers = append(newPlayers, p)
+			}
+		}
+		state.Players = newPlayers
+	}
+	tm.mu.Unlock()
+
+	if exists {
+		tm.broadcastTournamentUpdate(tournamentID)
+		tm.broadcastChatUpdate(tournamentID)
+	}
+}
+
+func (tm *TournamentManager) KickPlayer(tournamentID, operatorID, targetPlayerID string) error {
+	tm.mu.RLock()
+	state, exists := tm.tournaments[tournamentID]
+	tm.mu.RUnlock()
+
+	if !exists {
+		return &TournamentError{Message: "锦标赛不存在"}
+	}
+
+	if state.Tournament.Status != "registering" {
+		return &TournamentError{Message: "锦标赛已开始，无法踢人"}
+	}
+
+	if state.Tournament.CreatorID != operatorID {
+		return &TournamentError{Message: "只有锦标赛创建者可以踢人"}
+	}
+
+	if operatorID == targetPlayerID {
+		return &TournamentError{Message: "不能踢出自己"}
+	}
+
+	var targetPlayer *database.TournamentPlayer
+	for _, p := range state.Players {
+		if p.PlayerID == targetPlayerID {
+			targetPlayer = p
+			break
+		}
+	}
+
+	if targetPlayer == nil {
+		return &TournamentError{Message: "该玩家不在锦标赛中"}
+	}
+
+	database.RemoveTournamentPlayer(tournamentID, targetPlayerID)
+
+	tm.mu.Lock()
+	newPlayers := make([]*database.TournamentPlayer, 0)
+	for _, p := range state.Players {
+		if p.PlayerID != targetPlayerID {
+			newPlayers = append(newPlayers, p)
+		}
+	}
+	state.Players = newPlayers
+	tm.mu.Unlock()
+
+	tm.broadcastTournamentUpdate(tournamentID)
+
+	database.AddTournamentChat(tournamentID, operatorID, targetPlayer.Username, "被踢出了锦标赛", true)
+	tm.broadcastChatUpdate(tournamentID)
+
+	if tm.sendToPlayerFn != nil {
+		tm.sendToPlayerFn(targetPlayerID, "tournament_kicked", map[string]interface{}{
+			"tournamentId":   tournamentID,
+			"tournamentName": state.Tournament.Name,
+		})
+	}
+
+	return nil
+}
+
 func (tm *TournamentManager) checkRankRequirement(playerRank, minRank string) bool {
 	if minRank == "none" || minRank == "" {
 		return true
@@ -524,6 +604,13 @@ func (tm *TournamentManager) startMatch(tournamentID, matchID string) {
 				}()
 			} else {
 				gameOverMu.Unlock()
+			}
+		}
+		if msgType == "phase_change" {
+			if payloadMap, ok := payload.(map[string]interface{}); ok {
+				if turn, ok := payloadMap["turn"].(int); ok {
+					tm.broadcastMatchProgress(tournamentID, matchID, turn, r.Game.Config.MaxTurns)
+				}
 			}
 		}
 		if tm.sendToPlayerFn != nil {
@@ -1031,6 +1118,16 @@ func (tm *TournamentManager) broadcastChatUpdate(tournamentID string) {
 		messages, _ := tm.GetChatMessages(tournamentID, 50)
 		tm.broadcastFn(tournamentID, "chat_update", map[string]interface{}{
 			"messages": messages,
+		})
+	}
+}
+
+func (tm *TournamentManager) broadcastMatchProgress(tournamentID, matchID string, currentTurn, maxTurns int) {
+	if tm.broadcastFn != nil {
+		tm.broadcastFn(tournamentID, "match_progress", map[string]interface{}{
+			"matchId":     matchID,
+			"currentTurn": currentTurn,
+			"maxTurns":    maxTurns,
 		})
 	}
 }

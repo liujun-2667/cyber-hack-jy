@@ -15,6 +15,10 @@
   $: tournamentChat = $gameStore.tournamentChat || []
   $: playerInfo = $gameStore.playerInfo
 
+  $: tournamentPlayers = currentTournament?.players || []
+  $: isCreator = currentTournament && playerInfo && currentTournament.creatorId === playerInfo.playerId
+  $: isRegistering = currentTournament?.status === 'registering'
+
   function handleSendChat() {
     if (!chatMessage.trim()) return
     if (!currentTournament?.id) return
@@ -28,6 +32,11 @@
       e.preventDefault()
       handleSendChat()
     }
+  }
+
+  function handleKickPlayer(playerId) {
+    if (!confirm('确定要踢出该玩家吗？')) return
+    gameStore.kickPlayer(currentTournament.id, playerId)
   }
 
   function getStatusText(status) {
@@ -82,6 +91,9 @@
         <span class="status-badge {getStatusClass(currentTournament?.status)}">
           {getStatusText(currentTournament?.status)}
         </span>
+        {#if isCreator && isRegistering}
+          <span class="creator-badge">创建者</span>
+        {/if}
       </div>
       <button class="close-btn" on:click={handleClose}>✕</button>
     </div>
@@ -102,16 +114,50 @@
     </div>
 
     <div class="panel-content">
-      <div class="bracket-section">
-        <div class="section-title">
-          <span>🏆</span>
-          对阵表
+      <div class="left-section">
+        <div class="players-section">
+          <div class="section-title">
+            <span>👥</span>
+            参赛玩家 ({tournamentPlayers.length})
+          </div>
+          <div class="players-list">
+            {#if tournamentPlayers.length === 0}
+              <div class="players-empty">暂无玩家报名</div>
+            {:else}
+              {#each tournamentPlayers as player (player.playerId || player.id)}
+                <div class="player-item">
+                  <span class="player-seed">#{player.seed || '-'}</span>
+                  <span class="player-rank-icon" style="color: {getRankColor(player.currentRank || 'bronze')}">
+                    {getRankIcon(player.currentRank || 'bronze')}
+                  </span>
+                  <span class="player-username">{player.username}</span>
+                  <span class="player-elo">{formatElo(player.eloRating || 1200)}</span>
+                  {#if isCreator && isRegistering && player.playerId !== playerInfo?.playerId}
+                    <button 
+                      class="kick-btn" 
+                      on:click={() => handleKickPlayer(player.playerId || player.id)}
+                      title="踢出玩家"
+                    >
+                      ✕
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+            {/if}
+          </div>
         </div>
-        <div class="bracket-wrapper">
-          <TournamentBracket 
-            matches={currentBracket} 
-            currentRound={currentTournament?.currentRound || 0}
-          />
+
+        <div class="bracket-section">
+          <div class="section-title">
+            <span>🏆</span>
+            对阵表
+          </div>
+          <div class="bracket-wrapper">
+            <TournamentBracket 
+              matches={currentBracket} 
+              currentRound={currentTournament?.currentRound || 0}
+            />
+          </div>
         </div>
       </div>
 
@@ -224,6 +270,16 @@
     font-weight: 600;
   }
 
+  .creator-badge {
+    padding: 4px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(255, 215, 0, 0.15);
+    color: #FFD700;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+  }
+
   .status-registering {
     background: rgba(0, 255, 100, 0.15);
     color: #00ff64;
@@ -302,11 +358,99 @@
     overflow: hidden;
   }
 
-  .bracket-section {
+  .left-section {
     flex: 1;
     display: flex;
     flex-direction: column;
     border-right: 1px solid var(--border-color);
+    overflow: hidden;
+  }
+
+  .players-section {
+    border-bottom: 1px solid var(--border-color);
+    max-height: 200px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .players-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .players-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 16px;
+    font-style: italic;
+  }
+
+  .player-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  .player-seed {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-weight: bold;
+    min-width: 20px;
+  }
+
+  .player-rank-icon {
+    font-size: 14px;
+  }
+
+  .player-username {
+    flex: 1;
+    color: var(--text-primary);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .player-elo {
+    font-size: 11px;
+    color: var(--neon-cyan);
+    font-family: monospace;
+  }
+
+  .kick-btn {
+    background: transparent;
+    border: 1px solid rgba(255, 51, 102, 0.3);
+    color: var(--neon-pink);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-size: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .kick-btn:hover {
+    background: rgba(255, 51, 102, 0.2);
+    border-color: var(--neon-pink);
+  }
+
+  .bracket-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
 

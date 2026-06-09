@@ -217,6 +217,8 @@ func (h *Hub) handleMessage(client *Client, msg *Message) {
 		h.handleTournamentChat(client, msg)
 	case "tournament_chat_history":
 		h.handleTournamentChatHistory(client, msg)
+	case "tournament_kick":
+		h.handleTournamentKick(client, msg)
 	}
 }
 
@@ -610,6 +612,9 @@ func (h *Hub) handleTournamentLeave(client *Client, msg *Message) {
 	}
 
 	database.RemoveTournamentPlayer(payload.TournamentID, client.ID)
+
+	h.tournamentMgr.RemovePlayer(payload.TournamentID, client.ID)
+
 	client.SendMessage("tournament_left", map[string]interface{}{
 		"tournamentId": payload.TournamentID,
 	})
@@ -756,6 +761,30 @@ func (h *Hub) handleTournamentChatHistory(client *Client, msg *Message) {
 	client.SendMessage("tournament_chat_history", map[string]interface{}{
 		"tournamentId": payload.TournamentID,
 		"messages":     messages,
+	})
+}
+
+func (h *Hub) handleTournamentKick(client *Client, msg *Message) {
+	var payload struct {
+		TournamentID string `json:"tournamentId"`
+		PlayerID     string `json:"playerId"`
+	}
+	json.Unmarshal(msg.Payload, &payload)
+
+	if payload.TournamentID == "" || payload.PlayerID == "" {
+		client.SendMessage("error", map[string]string{"message": "参数不完整"})
+		return
+	}
+
+	err := h.tournamentMgr.KickPlayer(payload.TournamentID, client.ID, payload.PlayerID)
+	if err != nil {
+		client.SendMessage("error", map[string]string{"message": err.Error()})
+		return
+	}
+
+	client.SendMessage("tournament_kick_success", map[string]interface{}{
+		"tournamentId": payload.TournamentID,
+		"playerId":     payload.PlayerID,
 	})
 }
 

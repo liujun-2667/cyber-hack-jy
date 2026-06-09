@@ -26,13 +26,39 @@ function createGameStore() {
     currentBracket: [],
     tournamentChat: [],
     watchingTournament: null,
-    isInTournament: false
+    isInTournament: false,
+    toasts: []
   })
 
   let ws = null
   let reconnectAttempts = 0
   let reconnectTimer = null
   let username = ''
+  let toastIdCounter = 0
+
+  function showToast(message, type = 'info', duration = 3000) {
+    const id = ++toastIdCounter
+    update(state => ({
+      ...state,
+      toasts: [...state.toasts, { id, message, type }]
+    }))
+    if (duration > 0) {
+      setTimeout(() => {
+        update(state => ({
+          ...state,
+          toasts: state.toasts.filter(t => t.id !== id)
+        }))
+      }, duration)
+    }
+    return id
+  }
+
+  function dismissToast(id) {
+    update(state => ({
+      ...state,
+      toasts: state.toasts.filter(t => t.id !== id)
+    }))
+  }
 
   function connect(name) {
     username = name
@@ -250,21 +276,34 @@ function createGameStore() {
         }))
         break
       case 'tournament_update':
-        update(state => ({
-          ...state,
-          currentTournament: state.currentTournament?.id === message.payload.tournament?.id 
-            ? message.payload.tournament 
-            : state.currentTournament
-        }))
+        update(state => {
+          if (state.currentTournament?.id !== message.payload.tournament?.id) {
+            return state
+          }
+          const updatedTournament = {
+            ...message.payload.tournament,
+            players: message.payload.players || state.currentTournament.players || []
+          }
+          return {
+            ...state,
+            currentTournament: updatedTournament
+          }
+        })
         break
       case 'tournament_watching':
-        update(state => ({
-          ...state,
-          watchingTournament: message.payload.tournamentId,
-          currentTournament: message.payload.tournament,
-          currentBracket: message.payload.bracket || [],
-          tournamentChat: message.payload.chatMessages || []
-        }))
+        update(state => {
+          const tournament = message.payload.tournament || {}
+          if (message.payload.players) {
+            tournament.players = message.payload.players
+          }
+          return {
+            ...state,
+            watchingTournament: message.payload.tournamentId,
+            currentTournament: tournament,
+            currentBracket: message.payload.bracket || [],
+            tournamentChat: message.payload.chatMessages || []
+          }
+        })
         break
       case 'tournament_unwatched':
         update(state => ({
@@ -291,8 +330,33 @@ function createGameStore() {
           ...state,
           isInTournament: false,
           currentTournament: null,
-          watchingTournament: null
+          watchingTournament: null,
+          tournamentList: state.tournamentList.filter(t => t.id !== message.payload.tournamentId)
         }))
+        showToast(`锦标赛「${message.payload.tournamentName || ''}」已取消：${message.payload.reason || '报名人数不足'}`, 'warning', 4000)
+        break
+      case 'tournament_kicked':
+        update(state => ({
+          ...state,
+          isInTournament: false,
+          currentTournament: null
+        }))
+        showToast(`你已被移出锦标赛「${message.payload.tournamentName || ''}」`, 'warning', 4000)
+        break
+      case 'match_progress':
+        update(state => {
+          const matches = state.currentBracket.map(m => {
+            if (m.id === message.payload.matchId) {
+              return {
+                ...m,
+                currentTurn: message.payload.currentTurn,
+                maxTurns: message.payload.maxTurns
+              }
+            }
+            return m
+          })
+          return { ...state, currentBracket: matches }
+        })
         break
       case 'tournament_match_start':
         break
@@ -572,6 +636,10 @@ function createGameStore() {
     }
   }
 
+  function kickPlayer(tournamentId, playerId) {
+    send('tournament_kick', { tournamentId, playerId })
+  }
+
   return {
     subscribe,
     connect,
@@ -609,7 +677,10 @@ function createGameStore() {
     fetchTournaments,
     fetchTournament,
     fetchTournamentBracket,
-    fetchPlayerTournaments
+    fetchPlayerTournaments,
+    kickPlayer,
+    showToast,
+    dismissToast
   }
 }
 
