@@ -12,10 +12,14 @@
   let selectedMinRank = 'none'
   let countdownTimers = {}
   let timerInterval = null
+  let tick = 0
 
   $: tournamentList = $gameStore.tournamentList || []
   $: playerInfo = $gameStore.playerInfo
   $: isLoggedIn = !!playerInfo
+  $: isInTournament = $gameStore.isInTournament
+  $: currentTournamentId = $gameStore.currentTournament?.id
+  $: watchingTournamentId = $gameStore.watchingTournament
 
   const maxPlayersOptions = [
     { value: 8, label: '8人' },
@@ -48,6 +52,14 @@
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
 
+  $: {
+    tick
+    countdownTimers = {}
+    tournamentList.forEach(t => {
+      countdownTimers[t.id] = formatTimeRemaining(t.registrationDeadline)
+    })
+  }
+
   function getStatusText(status) {
     const statusMap = {
       'registering': '报名中',
@@ -73,9 +85,18 @@
     return getRankName(minRank) + '以上'
   }
 
+  function isPlayerRegistered(tournament) {
+    return isInTournament && currentTournamentId === tournament.id
+  }
+
+  function isPlayerWatching(tournament) {
+    return watchingTournamentId === tournament.id
+  }
+
   function canRegister(tournament) {
     if (tournament.status !== 'registering') return false
     if (tournament.playerCount >= tournament.maxPlayers) return false
+    if (isPlayerRegistered(tournament)) return false
     
     if (tournament.minRank === 'none' || !tournament.minRank) return true
     if (!playerInfo || !playerInfo.eloRating) return false
@@ -114,6 +135,14 @@
       alert('请先登录')
       return
     }
+    if (isInTournament) {
+      if (currentTournamentId === tournamentId) {
+        alert('你已经报名了该锦标赛')
+      } else {
+        alert('你已报名其他锦标赛，请先退出后再报名')
+      }
+      return
+    }
     gameStore.joinTournament(tournamentId)
   }
 
@@ -131,9 +160,7 @@
 
   function startTimers() {
     timerInterval = setInterval(() => {
-      tournamentList.forEach(t => {
-        countdownTimers[t.id] = formatTimeRemaining(t.registrationDeadline)
-      })
+      tick++
     }, 1000)
   }
 
@@ -268,27 +295,53 @@
 
             <div class="card-actions">
               {#if tournament.status === 'registering'}
-                {#if canRegister(tournament)}
+                {#if isPlayerRegistered(tournament)}
+                  <button 
+                    class="btn-success btn-sm" 
+                    disabled
+                  >
+                    ✓ 已报名
+                  </button>
+                  <button 
+                    class="btn-outline btn-sm" 
+                    on:click={() => handleLeave(tournament.id)}
+                  >
+                    退出
+                  </button>
+                {:else if canRegister(tournament)}
                   <button 
                     class="btn-neon btn-sm" 
                     on:click={() => handleJoin(tournament.id)}
                   >
                     报名参赛
                   </button>
+                {:else if tournament.playerCount >= tournament.maxPlayers}
+                  <button class="btn-disabled btn-sm" disabled title="人数已满">
+                    已满员
+                  </button>
                 {:else}
-                  <button class="btn-disabled btn-sm" disabled title="段位不足或人数已满">
+                  <button class="btn-disabled btn-sm" disabled title="段位不足">
                     无法报名
                   </button>
                 {/if}
               {/if}
 
-              {#if tournament.status === 'in_progress' || tournament.status === 'completed'}
-                <button 
-                  class="btn-outline btn-sm" 
-                  on:click={() => handleWatch(tournament.id)}
-                >
-                  {tournament.status === 'in_progress' ? '观战' : '查看结果'}
-                </button>
+              {#if tournament.status === 'in_progress' || tournament.status === 'completed' || tournament.status === 'registering'}
+                {#if isPlayerWatching(tournament)}
+                  <button 
+                    class="btn-success btn-sm" 
+                    on:click={() => handleWatch(tournament.id)}
+                  >
+                    👁 观战中
+                  </button>
+                {:else if tournament.status !== 'registering' || isPlayerRegistered(tournament)}
+                  <button 
+                    class="btn-outline btn-sm" 
+                    on:click={() => handleWatch(tournament.id)}
+                  >
+                    {tournament.status === 'in_progress' ? '观战' : tournament.status === 'registering' ? '查看对阵' : '查看结果'}
+                  </button>
+                {/if}
               {/if}
             </div>
           </div>
@@ -619,5 +672,15 @@
     border-radius: 6px;
     cursor: not-allowed;
     opacity: 0.5;
+  }
+
+  .btn-success {
+    background: rgba(0, 255, 100, 0.08);
+    border: 1px solid #00ff64;
+    color: #00ff64;
+    padding: 8px 16px;
+    font-size: 13px;
+    border-radius: 6px;
+    opacity: 0.9;
   }
 </style>

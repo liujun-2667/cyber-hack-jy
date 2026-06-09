@@ -277,12 +277,15 @@ function createGameStore() {
         break
       case 'tournament_update':
         update(state => {
-          if (state.currentTournament?.id !== message.payload.tournament?.id) {
+          const tournamentId = message.payload.tournament?.id
+          if (state.currentTournament?.id !== tournamentId && 
+              state.watchingTournament !== tournamentId) {
             return state
           }
+          const existingPlayers = state.currentTournament?.players || []
           const updatedTournament = {
             ...message.payload.tournament,
-            players: message.payload.players || state.currentTournament.players || []
+            players: message.payload.players || existingPlayers || []
           }
           return {
             ...state,
@@ -637,6 +640,22 @@ function createGameStore() {
   }
 
   function kickPlayer(tournamentId, playerId) {
+    update(state => {
+      if (state.currentTournament?.id !== tournamentId || !state.currentTournament?.players) {
+        return state
+      }
+      const newPlayers = state.currentTournament.players.filter(
+        p => (p.playerId || p.id || p.player_id) !== playerId
+      )
+      return {
+        ...state,
+        currentTournament: {
+          ...state.currentTournament,
+          players: newPlayers,
+          playerCount: newPlayers.length
+        }
+      }
+    })
     send('tournament_kick', { tournamentId, playerId })
   }
 
